@@ -18,4 +18,4 @@ model = vgg.vgg11(rng=rng, pretrained=True)
 pred = model(image)
 
 print('class', np.argmax(pred))
-print('accuracy', np.max(pred) / np.sum(pred, axis=1))
+print('score', np.max(pred))

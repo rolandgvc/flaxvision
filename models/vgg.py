@@ -34,6 +34,8 @@ class VGG(nn.Module):
         x = nn.relu(x)
         x = nn.dropout(x, 0.5, rng=rng)
         x = nn.Dense(x, num_classes, dtype=dtype, name="Dense_2")
+        
+        x = nn.log_softmax(x)
 
         return x
 
@@ -61,6 +63,8 @@ def vgg11(rng, pretrained=False, **kwargs):
 
 def convert_from_pytorch(pt_state):
     jax_state = {}
+    
+    # map pytorch layer indeces to flax indeces
     index_map = {'0': 0, '3': 1, '6': 2, '8': 3,
                  '11': 4, '13': 5, '16': 6, '18': 7}
 
@@ -75,7 +79,13 @@ def convert_from_pytorch(pt_state):
         jax_key = f"{layer}_{index_map[index]}"
 
         if param == 'weight':
-            jax_state[jax_key] = {'kernel': tensor.T}
+            # pytorch weights require transposing for jax operations
+            # Eg: (64,3,3,3) -> (3,3,3,64)
+            if layer == 'Conv':
+                tensor_t = np.transpose(tensor)  # try different premutations
+            elif layer == 'Dense':
+                tensor_t = np.transpose(tensor)
+            jax_state[jax_key] = {'kernel': tensor_t}
         if param == 'bias':
             jax_state[jax_key][param] = tensor
 

@@ -5,6 +5,18 @@ import utils
 import numpy as np
 
 
+model_urls = {
+    'vgg11': 'https://download.pytorch.org/models/vgg11-bbd30ac9.pth',
+    'vgg13': 'https://download.pytorch.org/models/vgg13-c768596a.pth',
+    'vgg16': 'https://download.pytorch.org/models/vgg16-397923af.pth',
+    'vgg19': 'https://download.pytorch.org/models/vgg19-dcbb9e9d.pth',
+    'vgg11_bn': 'https://download.pytorch.org/models/vgg11_bn-6002323d.pth',
+    'vgg13_bn': 'https://download.pytorch.org/models/vgg13_bn-abd245e5.pth',
+    'vgg16_bn': 'https://download.pytorch.org/models/vgg16_bn-6c64b313.pth',
+    'vgg19_bn': 'https://download.pytorch.org/models/vgg19_bn-c79401a0.pth',
+}
+
+
 class Classifier(nn.Module):
   def apply(self, x, num_classes=1000, train=False, dtype=jnp.float32):
     x = nn.Dense(x, 4096, dtype=dtype)
@@ -39,30 +51,7 @@ class VGG(nn.Module):
     return x
 
 
-def _vgg(arch, cfg, rng, batch_norm, pretrained, **kwargs):
-  vgg = VGG.partial(rng=rng, cfg=cfgs[cfg], batch_norm=batch_norm, **kwargs)
-
-  if pretrained:
-    pt_state = utils.load_state_dict_from_url(model_urls[arch])
-    params, state = convert_from_pytorch(
-      pt_state, cfg=cfgs[cfg], batch_norm=batch_norm)
-  else:
-    with nn.stateful() as state:
-      _, params = vgg.init_by_shape(rng, [(1, 224, 224, 3)])
-    state = state.as_dict()
-
-  return nn.Model(vgg, params), state
-
-def vgg11(rng, pretrained=True, **kwargs):
-  return _vgg('vgg11', 'A', rng, False, pretrained, **kwargs)
-
-def vgg11_bn(rng, pretrained=True, **kwargs):
-  return _vgg('vgg11_bn', 'A', rng, True, pretrained, **kwargs)
-
-def vgg19_bn(rng, pretrained=True, **kwargs):
-  return _vgg('vgg19_bn', 'E', rng, True, pretrained, **kwargs)
-
-def convert_from_pytorch(pt_state, cfg, batch_norm=False):
+def torch2jax(pt_state, cfg, batch_norm=False):
   jax_params = {}
   jax_state = {}
   conv_idx = 0
@@ -102,16 +91,6 @@ def convert_from_pytorch(pt_state, cfg, batch_norm=False):
     }
   return jax_params, jax_state
 
-model_urls = {
-    'vgg11': 'https://download.pytorch.org/models/vgg11-bbd30ac9.pth',
-    'vgg13': 'https://download.pytorch.org/models/vgg13-c768596a.pth',
-    'vgg16': 'https://download.pytorch.org/models/vgg16-397923af.pth',
-    'vgg19': 'https://download.pytorch.org/models/vgg19-dcbb9e9d.pth',
-    'vgg11_bn': 'https://download.pytorch.org/models/vgg11_bn-6002323d.pth',
-    'vgg13_bn': 'https://download.pytorch.org/models/vgg13_bn-abd245e5.pth',
-    'vgg16_bn': 'https://download.pytorch.org/models/vgg16_bn-6c64b313.pth',
-    'vgg19_bn': 'https://download.pytorch.org/models/vgg19_bn-c79401a0.pth',
-}
 
 cfgs = {
     'A': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
@@ -119,3 +98,50 @@ cfgs = {
     'D': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M'],
     'E': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M'],
 }
+
+
+def _vgg(arch, cfg, rng, batch_norm, pretrained, **kwargs):
+  vgg = VGG.partial(rng=rng, cfg=cfgs[cfg], batch_norm=batch_norm, **kwargs)
+
+  if pretrained:
+    pt_state = utils.load_state_dict_from_url(model_urls[arch])
+    params, state = torch2jax(
+      pt_state, cfg=cfgs[cfg], batch_norm=batch_norm)
+  else:
+    with nn.stateful() as state:
+      _, params = vgg.init_by_shape(rng, [(1, 224, 224, 3)])
+    state = state.as_dict()
+
+  return nn.Model(vgg, params), state
+
+
+def vgg11(rng, pretrained=True, **kwargs):
+  return _vgg('vgg11', 'A', rng, False, pretrained, **kwargs)
+
+
+def vgg11_bn(rng, pretrained=True, **kwargs):
+  return _vgg('vgg11_bn', 'A', rng, True, pretrained, **kwargs)
+
+
+def vgg13(rng, pretrained=True, **kwargs):
+  return _vgg('vgg13', 'B', rng, False, pretrained, **kwargs)
+
+
+def vgg13_bn(rng, pretrained=True, **kwargs):
+  return _vgg('vgg13_bn', 'B', rng, False, pretrained, **kwargs)
+
+
+def vgg16(rng, pretrained=True, **kwargs):
+  return _vgg('vgg16', 'D', rng, False, pretrained, **kwargs)
+
+
+def vgg16_bn(rng, pretrained=true, **kwargs):
+  return _vgg('vgg16_bn', 'D', rng, False, pretrained, **kwargs)
+
+
+def vgg19(rng, pretrained=True, **kwargs):
+  return _vgg('vgg19', 'E', rng, False, pretrained, **kwargs)
+
+def vgg19_bn(rng, pretrained=True, **kwargs):
+  return _vgg('vgg19_bn', 'E', rng, True, pretrained, **kwargs)
+

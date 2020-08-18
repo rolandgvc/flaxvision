@@ -1,1 +1,1 @@
-from .vgg import vgg11
+from .vgg import vgg11_bn

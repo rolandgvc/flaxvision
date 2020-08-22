@@ -1,0 +1,147 @@
+from flax import nn
+import jax
+import jax.numpy as jnp
+import utils
+import numpy as np
+
+
+def max_pool(x, pool_size, strides, padding):
+  """Temporary fix to pooling with explicit padding"""
+  padding2 = [(0, 0)] + padding + [(0, 0)]
+  x = jnp.pad(x, padding2, 'constant', (0,0))
+  x = nn.max_pool(x, pool_size, strides)
+  return x
+
+
+class DenseLayer(nn.Module):
+  def apply(self, x, growth_rate, bn_size, drop_rate, train=False):
+    x = jnp.concatenate(x, 3)
+
+    x = nn.BatchNorm(x, use_running_average=not train, name='norm1')
+    x = nn.relu(x)
+    x = nn.Conv(x, bn_size*growth_rate, (1, 1), (1, 1), padding='VALID', bias=False, name='conv1')
+
+    x = nn.BatchNorm(x, use_running_average=not train, name='norm2')
+    x = nn.relu(x)
+    x = nn.Conv(x, growth_rate, (3, 3), (1, 1), padding='SAME', bias=False, name='conv2')
+
+    if drop_rate:
+      x = nn.dropout(x, rate=drop_rate, deterministic=nt train)
+
+    return x
+
+
+class DenseBlock(nn.Module):
+  def apply(self, x, num_layers, bn_size, growth_rate, drop_rate, train=False):
+    features = [x]
+    for i in range(num_layers):
+      new_features = DenseLayer(features, growth_rate=growth_rate, bn_size=bn_size, drop_rate=drop_rate, name=f'denselayer{i+1}')
+      features.append(new_features)
+    return jnp.concatenate(features, 3)
+
+
+class Transition(nn.Module):
+  def apply(self, x, num_output_features, train=False):
+    x = nn.BatchNorm(x, use_running_average=not train, name='norm')
+    x = nn.relu(x)
+    x = nn.Conv(x, num_output_features, (1, 1), (1, 1), padding='VALID', bias=False, name='conv')
+    x = nn.avg_pool(x, (2, 2), (2, 2))
+    return x
+
+
+class Features(nn.Module):
+  def apply(self, x, growth_rate=32, block_config=(6, 12, 24, 16), num_init_features=64,
+            bn_size=4, drop_rate=0, train=False):
+    # initblock
+    x = nn.Conv(x, num_init_features, (7, 7), (2, 2), padding=[(3, 3), (3, 3)], bias=False, name='conv0')
+    x = nn.BatchNorm(x, use_running_average=not train, name='norm0')
+    x = nn.relu(x)
+    x = max_pool(x, (3, 3), (2, 2), padding=[(1, 1), (1, 1)])
+
+    # denseblocks
+    num_features = num_init_features
+    for i, num_layers in enumerate(block_config):
+      x = DenseBlock(x, num_layers, bn_size, growth_rate, drop_rate, name=f'denseblock{i+1}')
+      num_features += num_layers * growth_rate
+
+      if i != len(block_config) - 1:
+        num_features = num_features // 2
+        x = Transition(x, num_features, name=f'transition{i+1}')
+
+    # finalblock
+    x = nn.BatchNorm(x, use_running_average=not train, name='norm5')
+
+    x = nn.relu(x)
+    x = nn.avg_pool(x, (7, 7))
+
+    return x
+
+
+class DenseNet(nn.Module):
+  def apply(self, x, growth_rate=32, block_config=(6, 12, 24, 16), num_init_features=64, 
+            bn_size=4, drop_rate=0, num_classes=1000, train=False):
+    x = Features(x, growth_rate, block_config, num_init_features, bn_size, drop_rate, train, name='features')
+    x = x.transpose((0, 3, 1, 2))
+    x = x.reshape((x.shape[0], -1))
+    x = nn.Dense(x, num_classes, name='classifier')
+    return x
+
+
+def _densenet(rng, arch, growth_rate, block_config, num_init_features, pretrained, progress, **kwargs):
+  model = DenseNet.partial(growth_rate=growth_rate, block_config=block_config, num_init_features=num_init_features, **kwargs)
+  if pretrained:
+    pt_params = load_state_dict_from_url(model_urls[arch])
+    params, state = convert_from_pytorch(pt_params)
+  else:
+    with nn.stateful() as state:
+      _, params = model.init(rng, jnp.ones((1, 224, 224, 3)))
+    state = state.as_dict()
+  pprint(jax.tree_map(np.shape, fx_model.params))
+  return nn.Model(model, params), state
+
+
+def densenet121(rng, pretrained=False, progress=True, **kwargs):
+    return _densenet(rng, 'densenet121', 32, (6, 12, 24, 16), 64, pretrained, progress, **kwargs)
+
+
+def convert_from_pytorch(pt_state):
+  def get_flax_keys(keys):
+    if keys[-1] == 'weight':
+      is_scale = 'norm' in keys[-2] if len(keys) < 6 else 'norm' in keys[-3]
+      keys[-1] = 'scale' if is_scale else 'kernel'
+    if 'running' in keys[-1]:
+      keys[-1] = 'mean' if 'mean' in keys[-1] else 'var'
+
+    # if index separated from layer, concatenate them
+    if keys[-2] in ('1', '2'):
+      return keys[:3] + [keys[3]+keys[4]] + [keys[5]]
+    return keys
+
+  def add_to_params(params_dict, nested_keys, param, is_conv=False):
+    if len(nested_keys) == 1:
+      key, = nested_keys
+      params_dict[key] = np.transpose(param, (2,3,1,0)) if is_conv else np.transpose(param)
+    else:
+      assert len(nested_keys) > 1
+      first_key = nested_keys[0]
+      if first_key not in params_dict:
+        params_dict[first_key] = {}
+      add_to_params(params_dict[first_key], nested_keys[1:], param, 'conv' in first_key)
+
+  def add_to_state(state_dict, keys, param):
+      key_str = ''
+      for k in keys[:-1]:
+        key_str += f"/{k}"
+      if key_str not in state_dict:
+        state_dict[key_str] = {}
+      state_dict[key_str][keys[-1]] = param
+
+  jax_params, jax_state = {}, {}
+  for key, tensor in pt_state.items():
+    flax_keys = get_flax_keys(key.split('.'))
+    if flax_keys[-1] == 'mean' or flax_keys[-1] == 'var':
+      add_to_state(jax_state, flax_keys, tensor.detach().numpy())
+    else:
+      add_to_params(jax_params, flax_keys, tensor.detach().numpy())
+
+  return jax_params, jax_stateo

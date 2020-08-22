@@ -1,7 +1,7 @@
 from flax import nn
 import jax
 import jax.numpy as jnp
-import utils
+from .. import utils
 import numpy as np
 
 
@@ -135,7 +135,7 @@ def vgg16(rng, pretrained=True, **kwargs):
   return _vgg('vgg16', 'D', rng, False, pretrained, **kwargs)
 
 
-def vgg16_bn(rng, pretrained=true, **kwargs):
+def vgg16_bn(rng, pretrained=True, **kwargs):
   return _vgg('vgg16_bn', 'D', rng, False, pretrained, **kwargs)
 
 

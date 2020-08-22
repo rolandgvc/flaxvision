@@ -1,8 +1,16 @@
 from flax import nn
 import jax
 import jax.numpy as jnp
-import utils
+from .. import utils
 import numpy as np
+
+
+model_urls = {
+    'densenet121': 'https://download.pytorch.org/models/densenet121-a639ec97.pth',
+    'densenet169': 'https://download.pytorch.org/models/densenet169-b2777c0a.pth',
+    'densenet201': 'https://download.pytorch.org/models/densenet201-c1103571.pth',
+    'densenet161': 'https://download.pytorch.org/models/densenet161-8d451a50.pth',
+}
 
 
 def max_pool(x, pool_size, strides, padding):
@@ -26,7 +34,7 @@ class DenseLayer(nn.Module):
     x = nn.Conv(x, growth_rate, (3, 3), (1, 1), padding='SAME', bias=False, name='conv2')
 
     if drop_rate:
-      x = nn.dropout(x, rate=drop_rate, deterministic=nt train)
+      x = nn.dropout(x, rate=drop_rate, deterministic=not train)
 
     return x
 
@@ -90,13 +98,13 @@ class DenseNet(nn.Module):
 def _densenet(rng, arch, growth_rate, block_config, num_init_features, pretrained, progress, **kwargs):
   model = DenseNet.partial(growth_rate=growth_rate, block_config=block_config, num_init_features=num_init_features, **kwargs)
   if pretrained:
-    pt_params = load_state_dict_from_url(model_urls[arch])
+    pt_params = utils.load_state_dict_from_url(model_urls[arch])
     params, state = convert_from_pytorch(pt_params)
   else:
     with nn.stateful() as state:
       _, params = model.init(rng, jnp.ones((1, 224, 224, 3)))
     state = state.as_dict()
-  pprint(jax.tree_map(np.shape, fx_model.params))
+
   return nn.Model(model, params), state
 
 
@@ -144,4 +152,4 @@ def convert_from_pytorch(pt_state):
     else:
       add_to_params(jax_params, flax_keys, tensor.detach().numpy())
 
-  return jax_params, jax_stateo
+  return jax_params, jax_state

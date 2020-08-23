@@ -2,7 +2,6 @@ from flax import nn
 import jax
 import jax.numpy as jnp
 from .. import utils
-import numpy as np
 
 
 model_urls = {
@@ -20,13 +19,15 @@ def avg_pool(x, kernel_size, strides, padding):
 
 def inception(rng, pretrained=False, **kwargs):
   model = Inception.partial(rng=rng, **kwargs)
+
   if pretrained:
     pt_params = utils.load_state_dict_from_url(model_urls['inception_v3'])
-    params, state = convert_from_pytorch(pt_params)
+    params, state = utils.torch2jax(pt_params, get_flax_keys)
   else:
     with nn.stateful() as state:
       _, params = model.init_by_shape(rng, [(1, 299, 299, 3)])
     state = state.as_dict()
+
   return nn.Model(model, params), state
 
 
@@ -194,39 +195,9 @@ class BasicConv(nn.Module):
     return nn.relu(x)
 
 
-def convert_from_pytorch(pt_state):
-  def get_flax_keys(keys):
-    if keys[-1] == 'weight':
-      keys[-1] = 'scale' if 'bn' in keys[-2] else 'kernel'
-    if 'running' in keys[-1]:
-      keys[-1] = 'mean' if 'mean' in keys[-1] else 'var'
-    return keys
-
-  def add_to_params(params_dict, nested_keys, param, is_conv=False):
-    if len(nested_keys) == 1:
-      key, = nested_keys
-      params_dict[key] = np.transpose(param, (2,3,1,0)) if is_conv else np.transpose(param)
-    else:
-      assert len(nested_keys) > 1
-      first_key = nested_keys[0]
-      if first_key not in params_dict:
-        params_dict[first_key] = {}
-      add_to_params(params_dict[first_key], nested_keys[1:], param, 'conv' in first_key)
-
-  def add_to_state(state_dict, keys, param):
-    key_str = ''
-    for k in keys[:-1]:
-      key_str += f"/{k}"
-    if key_str not in state_dict:
-      state_dict[key_str] = {}
-    state_dict[key_str][keys[-1]] = param
-
-  jax_params, jax_state = {}, {}
-  for key, tensor in pt_state.items():
-    flax_keys = get_flax_keys(key.split('.'))
-    if flax_keys[-1] == 'mean' or flax_keys[-1] == 'var':
-      add_to_state(jax_state, flax_keys, tensor.detach().numpy())
-    else:
-      add_to_params(jax_params, flax_keys, tensor.detach().numpy())
-
-  return jax_params, jax_state
+def get_flax_keys(keys):
+  if keys[-1] == 'weight':
+    keys[-1] = 'scale' if 'bn' in keys[-2] else 'kernel'
+  if 'running' in keys[-1]:
+    keys[-1] = 'mean' if 'mean' in keys[-1] else 'var'
+  return keys

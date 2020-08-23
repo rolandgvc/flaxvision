@@ -11,6 +11,8 @@ import zipfile
 from urllib.request import urlopen, Request
 from urllib.parse import urlparse
 
+import numpy as np
+
 try:
     from tqdm.auto import tqdm  # automatically select proper tqdm submodule if available
 except ImportError:
@@ -158,3 +160,34 @@ def load_state_dict_from_url(url, model_dir=None, progress=True, file_name=None)
             cached_file = os.path.join(model_dir, extraced_name)
 
     return torch.load(cached_file)
+
+
+def torch2jax(pt_state, get_flax_keys):
+  def add_to_params(params_dict, nested_keys, param, is_conv=False):
+    if len(nested_keys) == 1:
+      key, = nested_keys
+      params_dict[key] = np.transpose(param, (2,3,1,0)) if is_conv else np.transpose(param)
+    else:
+      assert len(nested_keys) > 1
+      first_key = nested_keys[0]
+      if first_key not in params_dict:
+        params_dict[first_key] = {}
+      add_to_params(params_dict[first_key], nested_keys[1:], param, 'conv' in first_key)
+
+  def add_to_state(state_dict, keys, param):
+    key_str = ''
+    for k in keys[:-1]:
+      key_str += f"/{k}"
+    if key_str not in state_dict:
+      state_dict[key_str] = {}
+    state_dict[key_str][keys[-1]] = param
+
+  jax_params, jax_state = {}, {}
+  for key, tensor in pt_state.items():
+    flax_keys = get_flax_keys(key.split('.'))
+    if flax_keys[-1] == 'mean' or flax_keys[-1] == 'var':
+      add_to_state(jax_state, flax_keys, tensor.detach().numpy())
+    else:
+      add_to_params(jax_params, flax_keys, tensor.detach().numpy())
+
+  return jax_params, jax_state

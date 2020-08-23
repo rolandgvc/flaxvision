@@ -17,68 +17,13 @@ def avg_pool(x, kernel_size, strides, padding):
   return x
 
 
-def inception(rng, pretrained=False, **kwargs):
-  model = Inception.partial(rng=rng, **kwargs)
-
-  if pretrained:
-    pt_params = utils.load_state_dict_from_url(model_urls['inception_v3'])
-    params, state = utils.torch2jax(pt_params, _get_jax_keys)
-  else:
-    with nn.stateful() as state:
-      _, params = model.init_by_shape(rng, [(1, 299, 299, 3)])
-    state = state.as_dict()
-
-  return nn.Model(model, params), state
-
-
-class Inception(nn.Module):
-  def apply(self, x, rng, num_classes=1000, aux_logits=True, train=False, transform_input=True, inception_blocks=None, dtype=jnp.float32):
-    conv_block = BasicConv.partial(train=train, dtype=dtype)
-    inception_a = InceptionA.partial(conv_block=conv_block)
-    inception_b = InceptionB.partial(conv_block=conv_block)
-    inception_c = InceptionC.partial(conv_block=conv_block)
-    inception_d = InceptionD.partial(conv_block=conv_block)
-    inception_e = InceptionE.partial(conv_block=conv_block)
-    inception_aux = InceptionAux.partial(conv_block=conv_block)
-
-    if transform_input:
-      x = np.transpose(x, (0,3,1,2))
-      x_ch0 = jnp.expand_dims(x[:, 0], 1) * (0.229 / 0.5) + (0.485 - 0.5) / 0.5
-      x_ch1 = jnp.expand_dims(x[:, 1], 1) * (0.224 / 0.5) + (0.456 - 0.5) / 0.5
-      x_ch2 = jnp.expand_dims(x[:, 2], 1) * (0.225 / 0.5) + (0.406 - 0.5) / 0.5
-      x = jnp.concatenate((x_ch0, x_ch1, x_ch2), 1)
-      x = np.transpose(x, (0,2,3,1))
-
-    x = conv_block(x, 32, kernel_size=(3, 3), strides=(2, 2), name='Conv2d_1a_3x3')
-    x = conv_block(x, 32, kernel_size=(3, 3), name='Conv2d_2a_3x3')
-    x = conv_block(x, 64, kernel_size=(3, 3), padding=[(1, 1), (1, 1)], name='Conv2d_2b_3x3')
-    x = nn.max_pool(x, (3, 3), strides=(2, 2))
-    x = conv_block(x, 80, kernel_size=(1, 1), name='Conv2d_3b_1x1')
-    x = conv_block(x, 192, kernel_size=(3, 3), name='Conv2d_4a_3x3')
-    x = nn.max_pool(x, (3, 3), strides=(2, 2))
-
-    x = inception_a(x, pool_features=32, name='Mixed_5b')
-    x = inception_a(x, pool_features=64, name='Mixed_5c')
-    x = inception_a(x, pool_features=64, name='Mixed_5d')
-    x = inception_b(x, name='Mixed_6a')
-    x = inception_c(x, channels_7x7=128, name='Mixed_6b')
-    x = inception_c(x, channels_7x7=160, name='Mixed_6c')
-    x = inception_c(x, channels_7x7=160, name='Mixed_6d')
-    x = inception_c(x, channels_7x7=192, name='Mixed_6e')
-
-    aux = inception_aux(x, num_classes, name='AuxLogits') if train and aux_logits else None
-
-    x = inception_d(x, name='Mixed_7a')
-    x = inception_e(x, name='Mixed_7b')
-    x = inception_e(x, name='Mixed_7c')
-    x = nn.avg_pool(x, (8, 8))
-    x = nn.dropout(x, 0.5, deterministic=not train, rng=rng)
-
-    x = x.transpose((0, 3, 1, 2))
-    x = x.reshape((x.shape[0], -1))
-    x = nn.Dense(x, num_classes, name='fc')
-
-    return x, aux
+class BasicConv(nn.Module):
+  def apply(self, x, out_channels, train=False, dtype=jnp.float32, **kwargs):
+    if 'padding' not in kwargs:
+      kwargs['padding'] = 'VALID'
+    x = nn.Conv(x, out_channels, bias=False, **kwargs, name='conv', dtype=dtype)
+    x = nn.BatchNorm(x, use_running_average=not train, epsilon=0.001, name='bn', dtype=dtype)
+    return nn.relu(x)
 
 
 class InceptionA(nn.Module):
@@ -186,13 +131,68 @@ class InceptionAux(nn.Module):
     return x
 
 
-class BasicConv(nn.Module):
-  def apply(self, x, out_channels, train=False, dtype=jnp.float32, **kwargs):
-    if 'padding' not in kwargs:
-      kwargs['padding'] = 'VALID'
-    x = nn.Conv(x, out_channels, bias=False, **kwargs, name='conv', dtype=dtype)
-    x = nn.BatchNorm(x, use_running_average=not train, epsilon=0.001, name='bn', dtype=dtype)
-    return nn.relu(x)
+class Inception(nn.Module):
+  def apply(self, x, rng, num_classes=1000, aux_logits=True, train=False, transform_input=True, inception_blocks=None, dtype=jnp.float32):
+    conv_block = BasicConv.partial(train=train, dtype=dtype)
+    inception_a = InceptionA.partial(conv_block=conv_block)
+    inception_b = InceptionB.partial(conv_block=conv_block)
+    inception_c = InceptionC.partial(conv_block=conv_block)
+    inception_d = InceptionD.partial(conv_block=conv_block)
+    inception_e = InceptionE.partial(conv_block=conv_block)
+    inception_aux = InceptionAux.partial(conv_block=conv_block)
+
+    if transform_input:
+      x = np.transpose(x, (0,3,1,2))
+      x_ch0 = jnp.expand_dims(x[:, 0], 1) * (0.229 / 0.5) + (0.485 - 0.5) / 0.5
+      x_ch1 = jnp.expand_dims(x[:, 1], 1) * (0.224 / 0.5) + (0.456 - 0.5) / 0.5
+      x_ch2 = jnp.expand_dims(x[:, 2], 1) * (0.225 / 0.5) + (0.406 - 0.5) / 0.5
+      x = jnp.concatenate((x_ch0, x_ch1, x_ch2), 1)
+      x = np.transpose(x, (0,2,3,1))
+
+    x = conv_block(x, 32, kernel_size=(3, 3), strides=(2, 2), name='Conv2d_1a_3x3')
+    x = conv_block(x, 32, kernel_size=(3, 3), name='Conv2d_2a_3x3')
+    x = conv_block(x, 64, kernel_size=(3, 3), padding=[(1, 1), (1, 1)], name='Conv2d_2b_3x3')
+    x = nn.max_pool(x, (3, 3), strides=(2, 2))
+    x = conv_block(x, 80, kernel_size=(1, 1), name='Conv2d_3b_1x1')
+    x = conv_block(x, 192, kernel_size=(3, 3), name='Conv2d_4a_3x3')
+    x = nn.max_pool(x, (3, 3), strides=(2, 2))
+
+    x = inception_a(x, pool_features=32, name='Mixed_5b')
+    x = inception_a(x, pool_features=64, name='Mixed_5c')
+    x = inception_a(x, pool_features=64, name='Mixed_5d')
+    x = inception_b(x, name='Mixed_6a')
+    x = inception_c(x, channels_7x7=128, name='Mixed_6b')
+    x = inception_c(x, channels_7x7=160, name='Mixed_6c')
+    x = inception_c(x, channels_7x7=160, name='Mixed_6d')
+    x = inception_c(x, channels_7x7=192, name='Mixed_6e')
+
+    aux = inception_aux(x, num_classes, name='AuxLogits') if train and aux_logits else None
+
+    x = inception_d(x, name='Mixed_7a')
+    x = inception_e(x, name='Mixed_7b')
+    x = inception_e(x, name='Mixed_7c')
+    x = nn.avg_pool(x, (8, 8))
+    x = nn.dropout(x, 0.5, deterministic=not train, rng=rng)
+
+    x = x.transpose((0, 3, 1, 2))
+    x = x.reshape((x.shape[0], -1))
+    x = nn.Dense(x, num_classes, name='fc')
+
+    return x, aux
+
+
+def inception(rng, pretrained=False, **kwargs):
+  model = Inception.partial(rng=rng, **kwargs)
+
+  if pretrained:
+    pt_params = utils.load_state_dict_from_url(model_urls['inception_v3'])
+    params, state = utils.torch2jax(pt_params, _get_jax_keys)
+  else:
+    with nn.stateful() as state:
+      _, params = model.init_by_shape(rng, [(1, 299, 299, 3)])
+    state = state.as_dict()
+
+  return nn.Model(model, params), state
 
 
 def _get_jax_keys(keys):

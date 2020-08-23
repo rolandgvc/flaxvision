@@ -85,7 +85,7 @@ class Features(nn.Module):
 
 
 class DenseNet(nn.Module):
-  def apply(self, x, growth_rate=32, block_config=(6, 12, 24, 16), num_init_features=64, 
+  def apply(self, x, growth_rate=32, block_config=(6, 12, 24, 16), num_init_features=64,
             bn_size=4, drop_rate=0, num_classes=1000, train=False):
     x = Features(x, growth_rate, block_config, num_init_features, bn_size, drop_rate, train, name='features')
     x = x.transpose((0, 3, 1, 2))
@@ -94,12 +94,12 @@ class DenseNet(nn.Module):
     return x
 
 
-def _densenet(rng, arch, growth_rate, block_config, num_init_features, pretrained, progress, **kwargs):
+def _densenet(rng, arch, growth_rate, block_config, num_init_features, pretrained, **kwargs):
   model = DenseNet.partial(growth_rate=growth_rate, block_config=block_config, num_init_features=num_init_features, **kwargs)
 
   if pretrained:
     pt_params = utils.load_state_dict_from_url(model_urls[arch])
-    params, state = utils.torch2jax(pt_params, get_flax_keys)
+    params, state = utils.torch2jax(pt_params, _get_jax_keys)
   else:
     with nn.stateful() as state:
       _, params = model.init(rng, jnp.ones((1, 224, 224, 3)))
@@ -108,7 +108,7 @@ def _densenet(rng, arch, growth_rate, block_config, num_init_features, pretraine
   return nn.Model(model, params), state
 
 
-def get_flax_keys(keys):
+def _get_jax_keys(keys):
   if keys[-1] == 'weight':
     is_scale = 'norm' in keys[-2] if len(keys) < 6 else 'norm' in keys[-3]
     keys[-1] = 'scale' if is_scale else 'kernel'
@@ -122,5 +122,17 @@ def get_flax_keys(keys):
   return keys
 
 
-def densenet121(rng, pretrained=False, progress=True, **kwargs):
-    return _densenet(rng, 'densenet121', 32, (6, 12, 24, 16), 64, pretrained, progress, **kwargs)
+def densenet121(rng, pretrained=False, **kwargs):
+    return _densenet(rng, 'densenet121', 32, (6, 12, 24, 16), 64, pretrained, **kwargs)
+
+
+def densenet161(rng, pretrained=False, **kwargs):
+    return _densenet(rng, 'densenet161', 48, (6, 12, 36, 24), 96, pretrained, **kwargs)
+
+
+def densenet169(rng, pretrained=False, **kwargs):
+    return _densenet(rng, 'densenet169', 32, (6, 12, 32, 32), 64, pretrained, **kwargs)
+
+
+def densenet201(rng, pretrained=False, **kwargs):
+    return _densenet(rng, 'densenet201', 32, (6, 12, 48, 32), 64, pretrained, **kwargs)

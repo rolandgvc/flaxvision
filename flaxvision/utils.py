@@ -162,7 +162,7 @@ def load_state_dict_from_url(url, model_dir=None, progress=True, file_name=None)
     return torch.load(cached_file)
 
 
-def torch2jax(pt_state, get_flax_keys):
+def torch2jax(pt_state, get_jax_keys):
   def add_to_params(params_dict, nested_keys, param, is_conv=False):
     if len(nested_keys) == 1:
       key, = nested_keys
@@ -184,10 +184,10 @@ def torch2jax(pt_state, get_flax_keys):
 
   jax_params, jax_state = {}, {}
   for key, tensor in pt_state.items():
-    flax_keys = get_flax_keys(key.split('.'))
-    if flax_keys[-1] == 'mean' or flax_keys[-1] == 'var':
-      add_to_state(jax_state, flax_keys, tensor.detach().numpy())
+    jax_keys = get_jax_keys(key.split('.'))
+    if jax_keys[-1] == 'mean' or jax_keys[-1] == 'var':
+      add_to_state(jax_state, jax_keys, tensor.detach().numpy())
     else:
-      add_to_params(jax_params, flax_keys, tensor.detach().numpy())
+      add_to_params(jax_params, jax_keys, tensor.detach().numpy())
 
   return jax_params, jax_state

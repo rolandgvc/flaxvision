@@ -22,7 +22,7 @@ def inception(rng, pretrained=False, **kwargs):
 
   if pretrained:
     pt_params = utils.load_state_dict_from_url(model_urls['inception_v3'])
-    params, state = utils.torch2jax(pt_params, get_flax_keys)
+    params, state = utils.torch2jax(pt_params, _get_jax_keys)
   else:
     with nn.stateful() as state:
       _, params = model.init_by_shape(rng, [(1, 299, 299, 3)])
@@ -195,7 +195,7 @@ class BasicConv(nn.Module):
     return nn.relu(x)
 
 
-def get_flax_keys(keys):
+def _get_jax_keys(keys):
   if keys[-1] == 'weight':
     keys[-1] = 'scale' if 'bn' in keys[-2] else 'kernel'
   if 'running' in keys[-1]:

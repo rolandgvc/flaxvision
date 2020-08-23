@@ -59,12 +59,12 @@ def torch2jax(pt_state, cfg, batch_norm=False):
 
   tensor_iter = iter(pt_state.items())
 
+  def next_tensor():
+    _, tensor = next(tensor_iter)
+    return tensor.detach().numpy()
+
   jax_params["features"] = {}
   for layer_cfg in cfg:
-    def next_tensor():
-      _, tensor = next(tensor_iter)
-      return tensor.detach().numpy()
-
     if isinstance(layer_cfg, int):
       jax_params["features"][f"Conv_{conv_idx}"] = {
           'kernel': np.transpose(next_tensor(), (2,3,1,0)),
@@ -105,8 +105,7 @@ def _vgg(arch, cfg, rng, batch_norm, pretrained, **kwargs):
 
   if pretrained:
     pt_state = utils.load_state_dict_from_url(model_urls[arch])
-    params, state = torch2jax(
-      pt_state, cfg=cfgs[cfg], batch_norm=batch_norm)
+    params, state = torch2jax(pt_state, cfgs[cfg], batch_norm)
   else:
     with nn.stateful() as state:
       _, params = vgg.init_by_shape(rng, [(1, 224, 224, 3)])
@@ -141,6 +140,7 @@ def vgg16_bn(rng, pretrained=True, **kwargs):
 
 def vgg19(rng, pretrained=True, **kwargs):
   return _vgg('vgg19', 'E', rng, False, pretrained, **kwargs)
+
 
 def vgg19_bn(rng, pretrained=True, **kwargs):
   return _vgg('vgg19_bn', 'E', rng, True, pretrained, **kwargs)

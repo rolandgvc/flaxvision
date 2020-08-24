@@ -49,8 +49,8 @@ class VGG(nn.Module):
     return x
 
 
-def torch2jax(pt_state, cfg, batch_norm=False):
-  jax_params, jax_state  = {}, {}
+def torch2flax(pt_state, cfg, batch_norm=False):
+  flax_params, flax_state  = {}, {}
   conv_idx = 0
   bn_idx = 1
 
@@ -60,33 +60,33 @@ def torch2jax(pt_state, cfg, batch_norm=False):
     _, tensor = next(tensor_iter)
     return tensor.detach().numpy()
 
-  jax_params["features"] = {}
+  flax_params["features"] = {}
   for layer_cfg in cfg:
     if isinstance(layer_cfg, int):
-      jax_params["features"][f"Conv_{conv_idx}"] = {
+      flax_params["features"][f"Conv_{conv_idx}"] = {
           'kernel': np.transpose(next_tensor(), (2,3,1,0)),
           'bias': next_tensor(),
       }
       conv_idx += 2 if batch_norm else 1
 
       if batch_norm:
-        jax_params["features"][f"BatchNorm_{bn_idx}"] = {
+        flax_params["features"][f"BatchNorm_{bn_idx}"] = {
             'scale': next_tensor(),
             'bias': next_tensor(),
         }
-        jax_state[f"/features/BatchNorm_{bn_idx}"] = {
+        flax_state[f"/features/BatchNorm_{bn_idx}"] = {
             "mean": next_tensor(),
             "var": next_tensor(),
         }
         bn_idx += 2
 
-  jax_params["classifier"] = {}
+  flax_params["classifier"] = {}
   for idx in range(3):
-    jax_params["classifier"][f"Dense_{idx}"] = {
+    flax_params["classifier"][f"Dense_{idx}"] = {
         'kernel': np.transpose(next_tensor()),
         'bias': next_tensor(),
     }
-  return jax_params, jax_state
+  return flax_params, flax_state
 
 
 cfgs = {
@@ -102,7 +102,7 @@ def _vgg(arch, cfg, rng, batch_norm, pretrained, **kwargs):
 
   if pretrained:
     pt_state = utils.load_state_dict_from_url(model_urls[arch])
-    params, state = torch2jax(pt_state, cfgs[cfg], batch_norm)
+    params, state = torch2flax(pt_state, cfgs[cfg], batch_norm)
   else:
     with nn.stateful() as state:
       _, params = vgg.init_by_shape(rng, [(1, 224, 224, 3)])

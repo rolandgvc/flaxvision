@@ -1,8 +1,6 @@
 from flax import nn
-import jax
 import jax.numpy as jnp
 from .. import utils
-import numpy as np
 
 
 model_urls = {
@@ -30,11 +28,11 @@ def conv3x3(x, features, strides=(1, 1), groups=1,  name='conv3x3'):
 class BasicBlock(nn.Module):
   expansion = 1
   
-  def apply(self, x, features, strides=(1, 1), downsample=False, groups=1, 
+  def apply(self, x, features, strides=(1, 1), downsample=False, groups=1,
             base_width=64, norm=None, train=False, dtype=jnp.float32):
     if norm is None:
         norm = nn.BatchNorm.partial(use_running_average=not train,
-                                    momentum=0.9, epsilon=1e-5, dtype=dtype)    
+                                    momentum=0.9, epsilon=1e-5, dtype=dtype)
     identity = x
 
     out = conv3x3(x, features, strides=strides, name='conv1')
@@ -57,8 +55,8 @@ class BasicBlock(nn.Module):
 class Bottleneck(nn.Module):
   expansion = 4
   
-  def apply(self, x, features, strides=(1, 1), downsample=False, groups=1, 
-            base_width=64, norm=None, train=False, dtype=jnp.float32):    
+  def apply(self, x, features, strides=(1, 1), downsample=False, groups=1,
+            base_width=64, norm=None, train=False, dtype=jnp.float32):
     if norm is None:
         norm = nn.BatchNorm.partial(use_running_average=not train,
                                     momentum=0.9, epsilon=1e-5, dtype=dtype)
@@ -100,7 +98,7 @@ class Layer(nn.Module):
 
 
 class ResNet(nn.Module):
-  def apply(self, x, block, layers, num_classes=1000, groups=1, 
+  def apply(self, x, block, layers, num_classes=1000, groups=1,
             width_per_group=64, train=False, dtype=jnp.float32):
     norm = nn.BatchNorm.partial(use_running_average=not train,
                                 momentum=0.9, epsilon=1e-5, dtype=dtype)
@@ -111,7 +109,7 @@ class ResNet(nn.Module):
     x = nn.relu(x)
     x = utils.max_pool(x, (3, 3), strides=(2, 2), padding=[(1, 1), (1, 1)])
 
-    for i, block_size in enumerate(layers):   
+    for i, block_size in enumerate(layers):
       features = 64 * 2 ** i
       downsample = False
       strides = (2, 2) if i > 0 else (1, 1)
@@ -120,12 +118,12 @@ class ResNet(nn.Module):
         downsample = True
       
       kwargs = {
-          'features': features, 
-          'strides': strides, 
-          'downsample': downsample, 
+          'features': features,
+          'strides': strides,
+          'downsample': downsample,
           'groups': groups,
-          'base_width': width_per_group, 
-          'norm': norm, 
+          'base_width': width_per_group,
+          'norm': norm,
           'dtype': dtype,
       }
 

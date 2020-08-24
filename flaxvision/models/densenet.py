@@ -1,5 +1,4 @@
 from flax import nn
-import jax
 import jax.numpy as jnp
 from .. import utils
 
@@ -106,7 +105,7 @@ def _get_flax_keys(keys):
 
 def _densenet(rng, arch, growth_rate, block_config, 
               num_init_features, pretrained, **kwargs):
-  model = DenseNet.partial(growth_rate=growth_rate, block_config=block_config, 
+  model = DenseNet.partial(growth_rate=growth_rate, block_config=block_config,
                            num_init_features=num_init_features, **kwargs)
 
   if pretrained:

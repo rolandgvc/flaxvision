@@ -1,8 +1,6 @@
 from flax import nn
-import jax
 import jax.numpy as jnp
 from .. import utils
-import numpy as np
 
 
 model_urls = {
@@ -143,4 +141,3 @@ def vgg19(rng, pretrained=True, **kwargs):
 
 def vgg19_bn(rng, pretrained=True, **kwargs):
   return _vgg('vgg19_bn', 'E', rng, True, pretrained, **kwargs)
-

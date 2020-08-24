@@ -147,8 +147,6 @@ def load_state_dict_from_url(url, model_dir=None, progress=True, file_name=None)
         hash_prefix = None
         download_url_to_file(url, cached_file, hash_prefix, progress=progress)
 
-    # Note: extractall() defaults to overwrite file if exists. No need to clean up beforehand.
-    #       We deliberately don't handle tarfile here since the legacy serialization format was in tar.
     if zipfile.is_zipfile(cached_file):
         with zipfile.ZipFile(cached_file) as cached_zipfile:
             members = cached_zipfile.infolist()
@@ -192,12 +190,14 @@ def torch2flax(pt_state, get_flax_keys):
 
   return flax_params, flax_state
 
+
 def max_pool(x, pool_size, strides, padding):
   """Temporary fix for pooling with explicit padding"""
   padding2 = [(0, 0)] + padding + [(0, 0)]
   x = jnp.pad(x, padding2, 'constant', (0,0))
   x = nn.max_pool(x, pool_size, strides)
   return x
+
 
 def avg_pool(x, kernel_size, strides, padding):
   """Temporary fix for pooling with explicit padding"""

@@ -5,10 +5,10 @@ from .. import utils
 
 
 model_urls = {
-    'densenet121': 'https://download.pytorch.org/models/densenet121-a639ec97.pth',
-    'densenet161': 'https://download.pytorch.org/models/densenet161-8d451a50.pth',
-    'densenet169': 'https://download.pytorch.org/models/densenet169-b2777c0a.pth',
-    'densenet201': 'https://download.pytorch.org/models/densenet201-c1103571.pth',
+  'densenet121': 'https://download.pytorch.org/models/densenet121-a639ec97.pth',
+  'densenet161': 'https://download.pytorch.org/models/densenet161-8d451a50.pth',
+  'densenet169': 'https://download.pytorch.org/models/densenet169-b2777c0a.pth',
+  'densenet201': 'https://download.pytorch.org/models/densenet201-c1103571.pth',
 }
 
 
@@ -34,7 +34,8 @@ class DenseBlock(nn.Module):
   def apply(self, x, num_layers, bn_size, growth_rate, drop_rate, train=False):
     features = [x]
     for i in range(num_layers):
-      new_features = DenseLayer(features, growth_rate=growth_rate, bn_size=bn_size, drop_rate=drop_rate, name=f'denselayer{i+1}')
+      new_features = DenseLayer(features, growth_rate=growth_rate, bn_size=bn_size, 
+                                drop_rate=drop_rate, name=f'denselayer{i+1}')
       features.append(new_features)
     return jnp.concatenate(features, 3)
 
@@ -43,7 +44,8 @@ class Transition(nn.Module):
   def apply(self, x, num_output_features, train=False):
     x = nn.BatchNorm(x, use_running_average=not train, name='norm')
     x = nn.relu(x)
-    x = nn.Conv(x, num_output_features, (1, 1), (1, 1), padding='VALID', bias=False, name='conv')
+    x = nn.Conv(x, num_output_features, (1, 1), (1, 1), 
+                padding='VALID', bias=False, name='conv')
     x = nn.avg_pool(x, (2, 2), (2, 2))
     return x
 
@@ -52,7 +54,8 @@ class Features(nn.Module):
   def apply(self, x, growth_rate=32, block_config=(6, 12, 24, 16), num_init_features=64,
             bn_size=4, drop_rate=0, train=False):
     # initblock
-    x = nn.Conv(x, num_init_features, (7, 7), (2, 2), padding=[(3, 3), (3, 3)], bias=False, name='conv0')
+    x = nn.Conv(x, num_init_features, (7, 7), (2, 2), 
+                padding=[(3, 3), (3, 3)], bias=False, name='conv0')
     x = nn.BatchNorm(x, use_running_average=not train, name='norm0')
     x = nn.relu(x)
     x = utils.max_pool(x, (3, 3), (2, 2), padding=[(1, 1), (1, 1)])
@@ -79,25 +82,12 @@ class Features(nn.Module):
 class DenseNet(nn.Module):
   def apply(self, x, growth_rate=32, block_config=(6, 12, 24, 16), num_init_features=64,
             bn_size=4, drop_rate=0, num_classes=1000, train=False):
-    x = Features(x, growth_rate, block_config, num_init_features, bn_size, drop_rate, train, name='features')
+    x = Features(x, growth_rate, block_config, num_init_features, 
+                 bn_size, drop_rate, train, name='features')
     x = x.transpose((0, 3, 1, 2))
     x = x.reshape((x.shape[0], -1))
     x = nn.Dense(x, num_classes, name='classifier')
     return x
-
-
-def _densenet(rng, arch, growth_rate, block_config, num_init_features, pretrained, **kwargs):
-  model = DenseNet.partial(growth_rate=growth_rate, block_config=block_config, num_init_features=num_init_features, **kwargs)
-
-  if pretrained:
-    pt_params = utils.load_state_dict_from_url(model_urls[arch])
-    params, state = utils.torch2flax(pt_params, _get_flax_keys)
-  else:
-    with nn.stateful() as state:
-      _, params = model.init(rng, jnp.ones((1, 224, 224, 3)))
-    state = state.as_dict()
-
-  return nn.Model(model, params), state
 
 
 def _get_flax_keys(keys):
@@ -114,17 +104,33 @@ def _get_flax_keys(keys):
   return keys
 
 
+def _densenet(rng, arch, growth_rate, block_config, 
+              num_init_features, pretrained, **kwargs):
+  model = DenseNet.partial(growth_rate=growth_rate, block_config=block_config, 
+                           num_init_features=num_init_features, **kwargs)
+
+  if pretrained:
+    pt_params = utils.load_state_dict_from_url(model_urls[arch])
+    params, state = utils.torch2flax(pt_params, _get_flax_keys)
+  else:
+    with nn.stateful() as state:
+      _, params = model.init(rng, jnp.ones((1, 224, 224, 3)))
+    state = state.as_dict()
+
+  return nn.Model(model, params), state
+
+
 def densenet121(rng, pretrained=True, **kwargs):
-    return _densenet(rng, 'densenet121', 32, (6, 12, 24, 16), 64, pretrained, **kwargs)
+  return _densenet(rng, 'densenet121', 32, (6, 12, 24, 16), 64, pretrained, **kwargs)
 
 
 def densenet161(rng, pretrained=True, **kwargs):
-    return _densenet(rng, 'densenet161', 48, (6, 12, 36, 24), 96, pretrained, **kwargs)
+  return _densenet(rng, 'densenet161', 48, (6, 12, 36, 24), 96, pretrained, **kwargs)
 
 
 def densenet169(rng, pretrained=True, **kwargs):
-    return _densenet(rng, 'densenet169', 32, (6, 12, 32, 32), 64, pretrained, **kwargs)
+  return _densenet(rng, 'densenet169', 32, (6, 12, 32, 32), 64, pretrained, **kwargs)
 
 
 def densenet201(rng, pretrained=True, **kwargs):
-    return _densenet(rng, 'densenet201', 32, (6, 12, 48, 32), 64, pretrained, **kwargs)
+  return _densenet(rng, 'densenet201', 32, (6, 12, 48, 32), 64, pretrained, **kwargs)

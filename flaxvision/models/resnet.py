@@ -6,15 +6,15 @@ import numpy as np
 
 
 model_urls = {
-    'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
-    'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
-    'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
-    'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
-    'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
-    'resnext50_32x4d': 'https://download.pytorch.org/models/resnext50_32x4d-7cdf4587.pth',
-    'resnext101_32x8d': 'https://download.pytorch.org/models/resnext101_32x8d-8ba56ff5.pth',
-    'wide_resnet50_2': 'https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth',
-    'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
+  'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
+  'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
+  'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
+  'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
+  'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
+  'resnext50_32x4d': 'https://download.pytorch.org/models/resnext50_32x4d-7cdf4587.pth',
+  'resnext101_32x8d': 'https://download.pytorch.org/models/resnext101_32x8d-8ba56ff5.pth',
+  'wide_resnet50_2': 'https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth',
+  'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
 }
 
 
@@ -138,20 +138,6 @@ class ResNet(nn.Module):
     return x
 
 
-def _resnet(rng, arch, block, layers, pretrained, **kwargs):
-  model = ResNet.partial(block=block, layers=layers, **kwargs)
-  
-  if pretrained:
-    pt_params = load_state_dict_from_url(model_urls[arch])
-    params, state = utils.torch2flax(pt_params, _get_flax_keys)
-  else:
-    with nn.stateful() as state:
-      _, params = model.init_by_shape(rng, [(1, 224, 224, 3)])
-    state = state.as_dict()
-
-  return nn.Model(model, params), state
-
-
 def _get_flax_keys(keys):
   layerblock = layer_idx = ''
   if len(keys) == 2:   # init / dense layer
@@ -178,31 +164,52 @@ def _get_flax_keys(keys):
   return [layer, param]
 
 
+def _resnet(rng, arch, block, layers, pretrained, **kwargs):
+  model = ResNet.partial(block=block, layers=layers, **kwargs)
+  
+  if pretrained:
+    pt_params = load_state_dict_from_url(model_urls[arch])
+    params, state = utils.torch2flax(pt_params, _get_flax_keys)
+  else:
+    with nn.stateful() as state:
+      _, params = model.init_by_shape(rng, [(1, 224, 224, 3)])
+    state = state.as_dict()
+
+  return nn.Model(model, params), state
+
+
 def resnet18(rng, pretrained=True, **kwargs):
   return _resnet(rng, 'resnet18', BasicBlock, [2, 2, 2, 2], pretrained, **kwargs)
+
 
 def resnet50(rng, pretrained=True, **kwargs):
   return _resnet(rng, 'resnet50', Bottleneck, [3, 4, 6, 3], pretrained, **kwargs)
 
+
 def resnet101(rng, pretrained=True, **kwargs):
   return _resnet(rng, 'resnet101', Bottleneck, [3, 4, 23, 3], pretrained, **kwargs)
 
+
 def resnet152(rng, pretrained=True, **kwargs):
   return _resnet(rng, 'resnet152', Bottleneck, [3, 8, 36, 3], pretrained, **kwargs)
+
 
 def resnext50_32x4d(rng, pretrained=True, **kwargs):
   kwargs['groups'] = 32
   kwargs['width_per_group'] = 4
   return _resnet(rng, 'resnext50_32x4d', Bottleneck, [3, 4, 6, 3], pretrained, **kwargs)
 
+
 def resnext101_32x8d(rng, pretrained=True, **kwargs):
   kwargs['groups'] = 32
   kwargs['width_per_group'] = 8
   return _resnet(rng, 'resnext101_32x8d', Bottleneck, [3, 4, 23, 3], pretrained, **kwargs)
 
+
 def wide_resnet50_2(rng, pretrained=True, **kwargs):
   kwargs['width_per_group'] = 64 * 2
   return _resnet(rng, 'wide_resnet50_2', Bottleneck, [3, 4, 6, 3], pretrained, **kwargs)
+
 
 def wide_resnet101_2(rng, pretrained=True, **kwargs):
   kwargs['width_per_group'] = 64 * 2

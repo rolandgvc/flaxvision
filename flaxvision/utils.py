@@ -162,7 +162,7 @@ def load_state_dict_from_url(url, model_dir=None, progress=True, file_name=None)
     return torch.load(cached_file)
 
 
-def torch2jax(pt_state, get_jax_keys):
+def torch2flax(pt_state, get_flax_keys):
   def add_to_params(params_dict, nested_keys, param, is_conv=False):
     if len(nested_keys) == 1:
       key, = nested_keys
@@ -182,12 +182,26 @@ def torch2jax(pt_state, get_jax_keys):
       state_dict[key_str] = {}
     state_dict[key_str][keys[-1]] = param
 
-  jax_params, jax_state = {}, {}
+  flax_params, flax_state = {}, {}
   for key, tensor in pt_state.items():
-    jax_keys = get_jax_keys(key.split('.'))
-    if jax_keys[-1] == 'mean' or jax_keys[-1] == 'var':
-      add_to_state(jax_state, jax_keys, tensor.detach().numpy())
+    flax_keys = get_flax_keys(key.split('.'))
+    if flax_keys[-1] == 'mean' or flax_keys[-1] == 'var':
+      add_to_state(flax_state, flax_keys, tensor.detach().numpy())
     else:
-      add_to_params(jax_params, jax_keys, tensor.detach().numpy())
+      add_to_params(flax_params, flax_keys, tensor.detach().numpy())
 
-  return jax_params, jax_state
+  return flax_params, flax_state
+
+def max_pool(x, pool_size, strides, padding):
+  """Temporary fix for pooling with explicit padding"""
+  padding2 = [(0, 0)] + padding + [(0, 0)]
+  x = jnp.pad(x, padding2, 'constant', (0,0))
+  x = nn.max_pool(x, pool_size, strides)
+  return x
+
+def avg_pool(x, kernel_size, strides, padding):
+  """Temporary fix for pooling with explicit padding"""
+  padding2 = [(0, 0)] + padding + [(0, 0)]
+  x = jnp.pad(x, padding2, 'constant', (0,0))
+  x = nn.avg_pool(x, kernel_size, strides)
+  return x

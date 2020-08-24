@@ -9,14 +9,6 @@ model_urls = {
 }
 
 
-def avg_pool(x, kernel_size, strides, padding):
-  """Temporary fix to pooling with explicit padding"""
-  padding2 = [(0, 0)] + padding + [(0, 0)]
-  x = jnp.pad(x, padding2, 'constant', (0,0))
-  x = nn.avg_pool(x, kernel_size, strides)
-  return x
-
-
 class BasicConv(nn.Module):
   def apply(self, x, out_channels, train=False, dtype=jnp.float32, **kwargs):
     if 'padding' not in kwargs:
@@ -37,7 +29,7 @@ class InceptionA(nn.Module):
     branch3x3dbl = conv_block(branch3x3dbl, 96, kernel_size=(3, 3), padding=[(1, 1), (1, 1)], name='branch3x3dbl_2')
     branch3x3dbl = conv_block(branch3x3dbl, 96, kernel_size=(3, 3), padding=[(1, 1), (1, 1)], name='branch3x3dbl_3')
 
-    branch_pool = avg_pool(x, (3, 3), strides=(1, 1), padding=[(1, 1), (1, 1)])
+    branch_pool = utils.avg_pool(x, (3, 3), strides=(1, 1), padding=[(1, 1), (1, 1)])
     branch_pool = conv_block(branch_pool, pool_features, kernel_size=(1, 1), name='branch_pool')
 
     outputs = [branch1x1, branch5x5, branch3x3dbl, branch_pool]
@@ -186,7 +178,7 @@ def inception(rng, pretrained=False, **kwargs):
 
   if pretrained:
     pt_params = utils.load_state_dict_from_url(model_urls['inception_v3'])
-    params, state = utils.torch2jax(pt_params, _get_jax_keys)
+    params, state = utils.torch2flax(pt_params, _get_flax_keys)
   else:
     with nn.stateful() as state:
       _, params = model.init_by_shape(rng, [(1, 299, 299, 3)])
@@ -195,7 +187,7 @@ def inception(rng, pretrained=False, **kwargs):
   return nn.Model(model, params), state
 
 
-def _get_jax_keys(keys):
+def _get_flax_keys(keys):
   if keys[-1] == 'weight':
     keys[-1] = 'scale' if 'bn' in keys[-2] else 'kernel'
   if 'running' in keys[-1]:

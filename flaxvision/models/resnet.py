@@ -21,13 +21,13 @@ conv1x1 = nn.Conv.partial(kernel_size=(1, 1), padding='VALID', bias=False)
 def conv3x3(x, features, strides=(1, 1), groups=1,  name='conv3x3'):
   """Same padding as in pytorch"""
   x = jnp.pad(x, [(0, 0), (1, 1), (1, 1), (0, 0)], 'constant', (0,0))
-  return nn.Conv(x, features, (3, 3), strides, padding='VALID', 
+  return nn.Conv(x, features, (3, 3), strides, padding='VALID',
                  feature_group_count=groups, bias=False, name=name)
 
 
 class BasicBlock(nn.Module):
   expansion = 1
-  
+
   def apply(self, x, features, strides=(1, 1), downsample=False, groups=1,
             base_width=64, norm=None, train=False, dtype=jnp.float32):
     if norm is None:
@@ -38,14 +38,14 @@ class BasicBlock(nn.Module):
     out = conv3x3(x, features, strides=strides, name='conv1')
     out = norm(out, name='bn1')
     out = nn.relu(out)
-    
+
     out = conv3x3(out, features, name='conv2')
     out = norm(out, name='bn2')
-    
+
     if downsample:
       identity = conv1x1(identity, features, strides=strides, name='downsample_conv')
-      identity = norm(identity, name='downsample_bn') 
-    
+      identity = norm(identity, name='downsample_bn')
+
     out += identity
     out = nn.relu(out)
 
@@ -54,7 +54,7 @@ class BasicBlock(nn.Module):
 
 class Bottleneck(nn.Module):
   expansion = 4
-  
+
   def apply(self, x, features, strides=(1, 1), downsample=False, groups=1,
             base_width=64, norm=None, train=False, dtype=jnp.float32):
     if norm is None:
@@ -70,10 +70,10 @@ class Bottleneck(nn.Module):
     out = conv3x3(out, width, strides=strides, groups=groups, name='conv2')
     out = norm(out, name='bn2')
     out = nn.relu(out)
-    
+
     out = conv1x1(out, features * 4, name='conv3')
     out = norm(out, name='bn3')
-    
+
     if downsample:
       identity = conv1x1(identity, features * 4, strides=strides, name='downsample_conv')
       identity = norm(identity, name='downsample_bn')
@@ -90,10 +90,10 @@ class Layer(nn.Module):
 
     kwargs['strides'] = (1, 1)
     kwargs['downsample'] = False
-    
+
     for i in range(1, block_size):
       x = block(x, **kwargs, name=f'block{i+1}')
-    
+
     return x
 
 
@@ -113,10 +113,10 @@ class ResNet(nn.Module):
       features = 64 * 2 ** i
       downsample = False
       strides = (2, 2) if i > 0 else (1, 1)
-      
+
       if strides != (1, 1) or x.shape[-1] != features * block.expansion:
         downsample = True
-      
+
       kwargs = {
           'features': features,
           'strides': strides,
@@ -127,12 +127,12 @@ class ResNet(nn.Module):
           'dtype': dtype,
       }
 
-      x = Layer(x, block, block_size, **kwargs, name=f"layer{i+1}")
+      x = Layer(x, block, block_size, **kwargs, name=f'layer{i+1}')
 
     x = x.transpose((0, 3, 1, 2))
     x = jnp.mean(x, axis=(2, 3))
     x = nn.Dense(x, num_classes, dtype=dtype, name='fc')
-    
+
     return x
 
 
@@ -164,10 +164,10 @@ def _get_flax_keys(keys):
 
 def _resnet(rng, arch, block, layers, pretrained, **kwargs):
   model = ResNet.partial(block=block, layers=layers, **kwargs)
-  
+
   if pretrained:
-    pt_params = load_state_dict_from_url(model_urls[arch])
-    params, state = utils.torch2flax(pt_params, _get_flax_keys)
+    torch_params = load_state_dict_from_url(model_urls[arch])
+    params, state = utils.torch2flax(torch_params, _get_flax_keys)
   else:
     with nn.stateful() as state:
       _, params = model.init_by_shape(rng, [(1, 224, 224, 3)])

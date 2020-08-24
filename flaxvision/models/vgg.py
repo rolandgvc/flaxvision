@@ -33,7 +33,7 @@ class Features(nn.Module):
       if v == 'M':
         x = nn.max_pool(x, (2, 2), (2, 2))
       else:
-        x = nn.Conv(x, v, (3, 3), padding="SAME", dtype=dtype)
+        x = nn.Conv(x, v, (3, 3), padding='SAME', dtype=dtype)
         if batch_norm:
           x = nn.BatchNorm(x, use_running_average=not train, momentum=0.1, dtype=dtype)
         x = nn.relu(x)
@@ -49,42 +49,42 @@ class VGG(nn.Module):
     return x
 
 
-def torch2flax(pt_state, cfg, batch_norm=False):
+def torch2flax(torch_params, cfg, batch_norm=False):
   flax_params, flax_state  = {}, {}
   conv_idx = 0
   bn_idx = 1
 
-  tensor_iter = iter(pt_state.items())
+  tensor_iter = iter(torch_params.items())
 
   def next_tensor():
     _, tensor = next(tensor_iter)
     return tensor.detach().numpy()
 
-  flax_params["features"] = {}
+  flax_params['features'] = {}
   for layer_cfg in cfg:
     if isinstance(layer_cfg, int):
-      flax_params["features"][f"Conv_{conv_idx}"] = {
-          'kernel': np.transpose(next_tensor(), (2,3,1,0)),
-          'bias': next_tensor(),
+      flax_params['features'][f'Conv_{conv_idx}'] = {
+        'kernel': np.transpose(next_tensor(), (2,3,1,0)),
+        'bias': next_tensor(),
       }
       conv_idx += 2 if batch_norm else 1
 
       if batch_norm:
-        flax_params["features"][f"BatchNorm_{bn_idx}"] = {
-            'scale': next_tensor(),
-            'bias': next_tensor(),
+        flax_params['features'][f'BatchNorm_{bn_idx}'] = {
+          'scale': next_tensor(),
+          'bias': next_tensor(),
         }
-        flax_state[f"/features/BatchNorm_{bn_idx}"] = {
-            "mean": next_tensor(),
-            "var": next_tensor(),
+        flax_state[f'/features/BatchNorm_{bn_idx}'] = {
+          'mean': next_tensor(),
+          'var': next_tensor(),
         }
         bn_idx += 2
 
-  flax_params["classifier"] = {}
+  flax_params['classifier'] = {}
   for idx in range(3):
-    flax_params["classifier"][f"Dense_{idx}"] = {
-        'kernel': np.transpose(next_tensor()),
-        'bias': next_tensor(),
+    flax_params['classifier'][f'Dense_{idx}'] = {
+      'kernel': np.transpose(next_tensor()),
+      'bias': next_tensor(),
     }
   return flax_params, flax_state
 
@@ -101,8 +101,8 @@ def _vgg(arch, cfg, rng, batch_norm, pretrained, **kwargs):
   vgg = VGG.partial(rng=rng, cfg=cfgs[cfg], batch_norm=batch_norm, **kwargs)
 
   if pretrained:
-    pt_state = utils.load_state_dict_from_url(model_urls[arch])
-    params, state = torch2flax(pt_state, cfgs[cfg], batch_norm)
+    torch_params = utils.load_state_dict_from_url(model_urls[arch])
+    params, state = torch2flax(torch_params, cfgs[cfg], batch_norm)
   else:
     with nn.stateful() as state:
       _, params = vgg.init_by_shape(rng, [(1, 224, 224, 3)])

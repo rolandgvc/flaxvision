@@ -33,7 +33,7 @@ class DenseBlock(nn.Module):
   def apply(self, x, num_layers, bn_size, growth_rate, drop_rate, train=False):
     features = [x]
     for i in range(num_layers):
-      new_features = DenseLayer(features, growth_rate=growth_rate, bn_size=bn_size, 
+      new_features = DenseLayer(features, growth_rate=growth_rate, bn_size=bn_size,
                                 drop_rate=drop_rate, name=f'denselayer{i+1}')
       features.append(new_features)
     return jnp.concatenate(features, 3)
@@ -43,7 +43,7 @@ class Transition(nn.Module):
   def apply(self, x, num_output_features, train=False):
     x = nn.BatchNorm(x, use_running_average=not train, name='norm')
     x = nn.relu(x)
-    x = nn.Conv(x, num_output_features, (1, 1), (1, 1), 
+    x = nn.Conv(x, num_output_features, (1, 1), (1, 1),
                 padding='VALID', bias=False, name='conv')
     x = nn.avg_pool(x, (2, 2), (2, 2))
     return x
@@ -53,7 +53,7 @@ class Features(nn.Module):
   def apply(self, x, growth_rate=32, block_config=(6, 12, 24, 16), num_init_features=64,
             bn_size=4, drop_rate=0, train=False):
     # initblock
-    x = nn.Conv(x, num_init_features, (7, 7), (2, 2), 
+    x = nn.Conv(x, num_init_features, (7, 7), (2, 2),
                 padding=[(3, 3), (3, 3)], bias=False, name='conv0')
     x = nn.BatchNorm(x, use_running_average=not train, name='norm0')
     x = nn.relu(x)
@@ -81,7 +81,7 @@ class Features(nn.Module):
 class DenseNet(nn.Module):
   def apply(self, x, growth_rate=32, block_config=(6, 12, 24, 16), num_init_features=64,
             bn_size=4, drop_rate=0, num_classes=1000, train=False):
-    x = Features(x, growth_rate, block_config, num_init_features, 
+    x = Features(x, growth_rate, block_config, num_init_features,
                  bn_size, drop_rate, train, name='features')
     x = x.transpose((0, 3, 1, 2))
     x = x.reshape((x.shape[0], -1))
@@ -103,14 +103,14 @@ def _get_flax_keys(keys):
   return keys
 
 
-def _densenet(rng, arch, growth_rate, block_config, 
+def _densenet(rng, arch, growth_rate, block_config,
               num_init_features, pretrained, **kwargs):
   model = DenseNet.partial(growth_rate=growth_rate, block_config=block_config,
                            num_init_features=num_init_features, **kwargs)
 
   if pretrained:
-    pt_params = utils.load_state_dict_from_url(model_urls[arch])
-    params, state = utils.torch2flax(pt_params, _get_flax_keys)
+    torch_params = utils.load_state_dict_from_url(model_urls[arch])
+    params, state = utils.torch2flax(torch_params, _get_flax_keys)
   else:
     with nn.stateful() as state:
       _, params = model.init(rng, jnp.ones((1, 224, 224, 3)))

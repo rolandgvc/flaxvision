@@ -22,7 +22,7 @@ model = models.vgg16(rng, pretrained=True)
 
 ```
 ## How To Contribute
-If interested in adding additional models or improving the existent ones, please start by openning an Issue describing your idea.
+If interested in adding additional models or improving existent ones, please start by openning an Issue describing your idea.
 
 
 ## Acknowledgments

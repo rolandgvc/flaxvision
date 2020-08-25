@@ -1,5 +1,6 @@
 from flax import nn
 import jax.numpy as jnp
+import numpy as np
 from .. import utils
 
 
@@ -157,7 +158,7 @@ def _get_flax_keys(keys):
     param = 'mean' if 'mean' in param else 'var'
 
   if layerblock:
-    return [layerblock, f'block_{int(block_idx)+1}', f'{layer}{layer_idx}', param]
+    return [layerblock, f'block{int(block_idx)+1}', f'{layer}{layer_idx}', param]
 
   return [layer, param]
 
@@ -166,7 +167,7 @@ def _resnet(rng, arch, block, layers, pretrained, **kwargs):
   model = ResNet.partial(block=block, layers=layers, **kwargs)
 
   if pretrained:
-    torch_params = load_state_dict_from_url(model_urls[arch])
+    torch_params = utils.load_state_dict_from_url(model_urls[arch])
     params, state = utils.torch2flax(torch_params, _get_flax_keys)
   else:
     with nn.stateful() as state:
@@ -178,6 +179,10 @@ def _resnet(rng, arch, block, layers, pretrained, **kwargs):
 
 def resnet18(rng, pretrained=True, **kwargs):
   return _resnet(rng, 'resnet18', BasicBlock, [2, 2, 2, 2], pretrained, **kwargs)
+
+
+def resnet34(rng, pretrained=True, **kwargs):
+  return _resnet(rng, 'resnet34', BasicBlock, [3, 4, 6, 3], pretrained, **kwargs)
 
 
 def resnet50(rng, pretrained=True, **kwargs):

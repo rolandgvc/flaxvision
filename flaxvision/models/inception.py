@@ -1,5 +1,6 @@
 from flax import nn
 import jax.numpy as jnp
+import numpy as np
 from .. import utils
 
 
@@ -75,7 +76,7 @@ class InceptionC(nn.Module):
     branch7x7dbl = conv_block(branch7x7dbl, 192, kernel_size=(1, 7),
                               padding=[(0, 0), (3, 3)], name='branch7x7dbl_5')
 
-    branch_pool = avg_pool(x, (3, 3), strides=(1, 1), padding=[(1, 1), (1, 1)])
+    branch_pool = utils.avg_pool(x, (3, 3), strides=(1, 1), padding=[(1, 1), (1, 1)])
     branch_pool = conv_block(branch_pool, 192, kernel_size=(1, 1), name='branch_pool')
 
     outputs = [branch1x1, branch7x7, branch7x7dbl, branch_pool]
@@ -122,7 +123,7 @@ class InceptionE(nn.Module):
                                  padding=[(1, 1), (0, 0)], name='branch3x3dbl_3b')
     branch3x3dbl = jnp.concatenate([branch3x3dbl_3a, branch3x3dbl_3b], 3)
 
-    branch_pool = avg_pool(x, (3, 3), strides=(1, 1), padding=[(1, 1), (1, 1)])
+    branch_pool = utils.avg_pool(x, (3, 3), strides=(1, 1), padding=[(1, 1), (1, 1)])
     branch_pool = conv_block(branch_pool, 192, kernel_size=(1, 1), name='branch_pool')
 
     outputs = [branch1x1, branch3x3, branch3x3dbl, branch_pool]

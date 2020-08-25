@@ -1,5 +1,6 @@
 from flax import nn
 import jax.numpy as jnp
+import numpy as np
 from .. import utils
 
 

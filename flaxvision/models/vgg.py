@@ -103,7 +103,7 @@ def _vgg(arch, cfg, rng, batch_norm, pretrained, **kwargs):
   vgg = VGG.partial(rng=rng, cfg=cfgs[cfg], batch_norm=batch_norm, **kwargs)
 
   if pretrained:
-    torch_params = utils.load_state_dict_from_url(model_urls[arch])
+    torch_params = utils.load_torch_params(model_urls[arch])
     params, state = _torch2flax(torch_params, cfgs[cfg], batch_norm)
   else:
     with nn.stateful() as state:

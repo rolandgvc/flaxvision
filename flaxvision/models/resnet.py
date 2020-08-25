@@ -167,7 +167,7 @@ def _resnet(rng, arch, block, layers, pretrained, **kwargs):
   model = ResNet.partial(block=block, layers=layers, **kwargs)
 
   if pretrained:
-    torch_params = utils.load_state_dict_from_url(model_urls[arch])
+    torch_params = utils.load_torch_params(model_urls[arch])
     params, state = utils.torch2flax(torch_params, _get_flax_keys)
   else:
     with nn.stateful() as state:

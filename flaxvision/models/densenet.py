@@ -110,7 +110,7 @@ def _densenet(rng, arch, growth_rate, block_config,
                            num_init_features=num_init_features, **kwargs)
 
   if pretrained:
-    torch_params = utils.load_state_dict_from_url(model_urls[arch])
+    torch_params = utils.load_torch_params(model_urls[arch])
     params, state = utils.torch2flax(torch_params, _get_flax_keys)
   else:
     with nn.stateful() as state:

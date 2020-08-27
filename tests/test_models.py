@@ -6,6 +6,8 @@ import numpy as np
 import jax.numpy as jnp
 from jax import random
 
+import unittest
+
 
 rng = random.PRNGKey(0)
 
@@ -36,26 +38,29 @@ MODEL_LIST = [
 ]
 
 
-# Inputs
-flax_input = jnp.ones((1, 224, 224, 3))
-torch_input = torch.ones([1, 3, 224, 224])
+class TestModels(unittest.TestCase):
 
-flax_inception_input = jnp.ones((1, 299, 299, 3))
-torch_inception_input = torch.ones([1, 3, 299, 299])
+  def test_outputs(self):
+    flax_input = jnp.ones((1, 224, 224, 3))
+    torch_input = torch.ones([1, 3, 224, 224])
+
+    flax_inception_input = jnp.ones((1, 299, 299, 3))
+    torch_inception_input = torch.ones([1, 3, 299, 299])
+
+    for i, (torch_model, flax_model) in enumerate(MODEL_LIST):
+      torch_model.eval()
+      flax_model, flax_state = flax_model
+      if i == 0:
+        torch_out = torch_model(torch_inception_input).detach().numpy()
+        with nn.stateful(nn.Collection(flax_state), mutable=False):
+          flax_out = flax_model(flax_inception_input)
+        self.assertLess(np.mean(np.abs(flax_out[0] - torch_out)), 0.0001, "PyTorch and Flax models' outputs don't match.")
+      else:
+        torch_out = torch_model(torch_input).detach().numpy()
+        with nn.stateful(nn.Collection(flax_state), mutable=False):
+          flax_out = flax_model(flax_input)
+        self.assertLess(np.mean(np.abs(flax_out - torch_out)), 0.0001, "PyTorch and Flax models' outputs don't match.")
 
 
-# Models
-for i, (torch_model, flax_model) in enumerate(MODEL_LIST):
-  torch_model.eval()
-  flax_model, flax_state = flax_model
-
-  if i == 0:
-    torch_out = torch_model(torch_inception_input).detach().numpy()
-    with nn.stateful(nn.Collection(flax_state), mutable=False):
-      flax_out = flax_model(flax_inception_input)
-    assert np.mean(np.abs(flax_out[0] - torch_out)) < 0.0001
-  else:
-    torch_out = torch_model(torch_input).detach().numpy()
-    with nn.stateful(nn.Collection(flax_state), mutable=False):
-      flax_out = flax_model(flax_input)
-    assert np.mean(np.abs(flax_out - torch_out)) < 0.0001
+if __name__ == '__main__':
+    unittest.main()

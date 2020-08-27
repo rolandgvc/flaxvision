@@ -50,7 +50,7 @@ class VGG(nn.Module):
     return x
 
 
-def _torch2flax(torch_params, cfg, batch_norm=False):
+def _torch_to_flax(torch_params, cfg, batch_norm=False):
   flax_params, flax_state  = {}, {}
   conv_idx = 0
   bn_idx = 1
@@ -104,7 +104,7 @@ def _vgg(arch, cfg, rng, batch_norm, pretrained, **kwargs):
 
   if pretrained:
     torch_params = utils.load_torch_params(model_urls[arch])
-    params, state = _torch2flax(torch_params, cfgs[cfg], batch_norm)
+    params, state = _torch_to_flax(torch_params, cfgs[cfg], batch_norm)
   else:
     with nn.stateful() as state:
       _, params = vgg.init_by_shape(rng, [(1, 224, 224, 3)])

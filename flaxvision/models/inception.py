@@ -207,7 +207,7 @@ def inception(rng, pretrained=True, **kwargs):
 
   if pretrained:
     torch_params = utils.load_torch_params(model_urls['inception_v3'])
-    params, state = utils.torch2flax(torch_params, _get_flax_keys)
+    params, state = utils.torch_to_flax(torch_params, _get_flax_keys)
   else:
     with nn.stateful() as state:
       _, params = model.init_by_shape(rng, [(1, 299, 299, 3)])

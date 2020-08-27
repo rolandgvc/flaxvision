@@ -111,7 +111,7 @@ def _densenet(rng, arch, growth_rate, block_config,
 
   if pretrained:
     torch_params = utils.load_torch_params(model_urls[arch])
-    params, state = utils.torch2flax(torch_params, _get_flax_keys)
+    params, state = utils.torch_to_flax(torch_params, _get_flax_keys)
   else:
     with nn.stateful() as state:
       _, params = model.init(rng, jnp.ones((1, 224, 224, 3)))

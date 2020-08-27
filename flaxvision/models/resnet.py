@@ -138,27 +138,27 @@ class ResNet(nn.Module):
 
 
 def _get_flax_keys(keys):
-  layerblock = layer_idx = ''
-  if len(keys) == 2:   # init / dense layer
+  layerblock = None
+  layer_idx = None
+  if len(keys) == 2:  # first layer and classifier
     layer, param = keys
-  elif len(keys) == 4: # regular layer
+  elif len(keys) == 4: # block layer
     layerblock, block_idx, layer, param = keys
   elif len(keys) == 5: # downsample layer
     layerblock, block_idx, layer, layer_idx, param = keys
 
-  if layer == 'downsample' and layer_idx == '0':
+  if layer_idx == '0':
     layer = 'downsample_conv'
-    layer_idx = ''
-  if layer =='downsample' and layer_idx == '1':
+  if layer_idx == '1':
     layer = 'downsample_bn'
-    layer_idx = ''
+
   if param == 'weight':
     param = 'scale' if 'bn' in layer else 'kernel'
   if 'running' in param:
     param = 'mean' if 'mean' in param else 'var'
 
   if layerblock:
-    return [layerblock, f'block{int(block_idx)+1}', f'{layer}{layer_idx}', param]
+    return [layerblock, f'block{int(block_idx)+1}', layer, param]
 
   return [layer, param]
 

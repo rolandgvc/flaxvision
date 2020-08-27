@@ -4,7 +4,7 @@ The flaxvision package contains a selection of neural network models ported from
 **Note: flaxvision is currently in active development. API and functionality will change before the first stable release.**
 
 ### Roadmap to V0.1
-Plan features for the first release:
+Planned features for the first release:
 - [ ] Update models to [linen API](https://github.com/google/flax/tree/0132b3f234a9868b47df491efde870bdc58e97a9/linen_examples)
 - [ ] Add support for transfer learning and checkpoint loading (with examples)
 - [ ] Add support to ResNet for dilated convolutions

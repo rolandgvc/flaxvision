@@ -17,9 +17,9 @@ setup(
     name='flaxvision',
     version=version,
     description='A selection of neural network models \
-                ported from torchvision for JAX & Flax.'
-    author='Roland Gavrilescu'
-    author_email="gavrilescu.roland@gmail.com"
+                ported from torchvision for JAX & Flax.',
+    author='Roland Gavrilescu',
+    author_email="gavrilescu.roland@gmail.com",
     url="https://github.com/rolandgvc/flaxvision",
     install_requires=install_requires,
     packages=find_packages()

@@ -22,6 +22,9 @@ setup(
     author='Roland Gavrilescu',
     author_email="gavrilescu.roland@gmail.com",
     url="https://github.com/rolandgvc/flaxvision",
-    install_requires=install_requires,
     packages=find_packages()
+    install_requires=install_requires,
+    extras_require={
+        "testing": tests_require,
+        },
 )

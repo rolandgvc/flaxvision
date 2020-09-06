@@ -5,8 +5,8 @@ version = '0.0.5'
 install_requires = [
     'numpy',
     'jax>=0.1.59',
-    'flax==0.2.0'
-    'torch>=1.3.0'
+    'flax==0.2.0',
+    'torch>=1.3.0',
 ]
 
 tests_require = [

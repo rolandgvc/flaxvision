@@ -1,0 +1,20 @@
+# This workflow will install Python dependencies and run tests with a variety of Python versions
+
+
+name: CI
+
+on: 
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    - name: Test with pytest
+      uses: clauss/GitHub-Action-for-pytest@master
+      with:
+        args: python setup.py develop && pytest

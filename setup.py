@@ -6,13 +6,14 @@ install_requires = [
     'numpy',
     'jax>=0.1.59',
     'flax==0.2.0',
-    'torch>=1.3.0',
+    'torch>=1.4.0',
 ]
 
 tests_require = [
     'jaxlib',
     'torchvision',
     'pytest',
+    'pytest-cov',
 ]
 
 setup(

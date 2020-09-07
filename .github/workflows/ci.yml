@@ -27,4 +27,4 @@ jobs:
         pip install -v .[testing]
     - name: Test with pytest
       run: |
-        python -m pytest
+        python -m pytest -o log_cli=true --log-cli-level=INFO

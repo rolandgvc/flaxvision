@@ -6,11 +6,6 @@ from .vgg import vgg16
 from .vgg import vgg16_bn
 from .vgg import vgg19
 from .vgg import vgg19_bn
-from .densenet import densenet121
-from .densenet import densenet161
-from .densenet import densenet169
-from .densenet import densenet201
-from .inception import inception
 from .resnet import resnet18
 from .resnet import resnet34
 from .resnet import resnet50
@@ -20,3 +15,8 @@ from .resnet import resnext50_32x4d
 from .resnet import resnext101_32x8d
 from .resnet import wide_resnet50_2
 from .resnet import wide_resnet101_2
+from .densenet import densenet121
+from .densenet import densenet161
+from .densenet import densenet169
+from .densenet import densenet201
+from .inception import inception_v3

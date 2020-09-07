@@ -202,7 +202,7 @@ def _get_flax_keys(keys):
   return keys
 
 
-def inception(rng, pretrained=True, **kwargs):
+def inception_v3(rng, pretrained=True, **kwargs):
   model = Inception.partial(rng=rng, **kwargs)
 
   if pretrained:

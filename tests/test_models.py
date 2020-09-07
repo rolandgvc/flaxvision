@@ -22,7 +22,7 @@ MODELS_LIST = ['vgg13', 'vgg13_bn', 'vgg16', 'vgg16_bn', 'vgg19', 'vgg19_bn',
 
 class TestModels(unittest.TestCase):
 
-  def get_model(self, key):
+  def _get_model(self, key):
     if key == 'vgg13':
       return (torch_models.vgg13(True), flax_models.vgg13(RNG))
     if key == 'vgg13_bn':
@@ -69,13 +69,12 @@ class TestModels(unittest.TestCase):
 
     flax_input = jnp.ones((1, 224, 224, 3))
     torch_input = torch.ones([1, 3, 224, 224])
-
     flax_inception_input = jnp.ones((1, 299, 299, 3))
     torch_inception_input = torch.ones([1, 3, 299, 299])
 
     for key in MODELS_LIST:
       log.info(f'testing {key}')
-      torch_model, (flax_model, flax_state) = self.get_model(key)
+      torch_model, (flax_model, flax_state) = self._get_model(key)
       torch_model.eval()
 
       if key == 'inception_v3':

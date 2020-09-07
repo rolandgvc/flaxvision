@@ -22,6 +22,34 @@ MODELS_LIST = ['vgg13', 'vgg13_bn', 'vgg16', 'vgg16_bn', 'vgg19', 'vgg19_bn',
 
 class TestModels(unittest.TestCase):
 
+  def test_outputs(self):
+    log = logging.getLogger(__name__)
+
+    flax_input = jnp.ones((1, 224, 224, 3))
+    torch_input = torch.ones([1, 3, 224, 224])
+    flax_inception_input = jnp.ones((1, 299, 299, 3))
+    torch_inception_input = torch.ones([1, 3, 299, 299])
+
+    for key in MODELS_LIST:
+      log.info(f'testing {key}')
+      torch_model, (flax_model, flax_state) = self._get_model(key)
+      torch_model.eval()
+
+      if key == 'inception_v3':
+        torch_out = torch_model(torch_inception_input).detach().numpy()
+        with nn.stateful(nn.Collection(flax_state), mutable=False):
+          flax_out = flax_model(flax_inception_input)
+        self.assertLess(np.mean(np.abs(flax_out[0] - torch_out)), 0.0001,
+                        "PyTorch and Flax models' outputs don't match.")
+      else:
+        torch_out = torch_model(torch_input).detach().numpy()
+        with nn.stateful(nn.Collection(flax_state), mutable=False):
+          flax_out = flax_model(flax_input)
+        self.assertLess(np.mean(np.abs(flax_out - torch_out)), 0.0001,
+                        "PyTorch and Flax models' outputs don't match.")
+
+      del torch_model, flax_model, flax_state
+
   def _get_model(self, key):
     if key == 'vgg13':
       return (torch_models.vgg13(True), flax_models.vgg13(RNG))
@@ -64,33 +92,6 @@ class TestModels(unittest.TestCase):
     if key == 'inception_v3':
       return (torch_models.inception_v3(True), flax_models.inception_v3(RNG))
 
-  def test_outputs(self):
-    log = logging.getLogger(__name__)
-
-    flax_input = jnp.ones((1, 224, 224, 3))
-    torch_input = torch.ones([1, 3, 224, 224])
-    flax_inception_input = jnp.ones((1, 299, 299, 3))
-    torch_inception_input = torch.ones([1, 3, 299, 299])
-
-    for key in MODELS_LIST:
-      log.info(f'testing {key}')
-      torch_model, (flax_model, flax_state) = self._get_model(key)
-      torch_model.eval()
-
-      if key == 'inception_v3':
-        torch_out = torch_model(torch_inception_input).detach().numpy()
-        with nn.stateful(nn.Collection(flax_state), mutable=False):
-          flax_out = flax_model(flax_inception_input)
-        self.assertLess(np.mean(np.abs(flax_out[0] - torch_out)), 0.0001,
-                        "PyTorch and Flax models' outputs don't match.")
-      else:
-        torch_out = torch_model(torch_input).detach().numpy()
-        with nn.stateful(nn.Collection(flax_state), mutable=False):
-          flax_out = flax_model(flax_input)
-        self.assertLess(np.mean(np.abs(flax_out - torch_out)), 0.0001,
-                        "PyTorch and Flax models' outputs don't match.")
-
-      del torch_model, flax_model, flax_state
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)

@@ -35,14 +35,6 @@ class TestModels(unittest.TestCase):
       return (torch_models.vgg19(True), flax_models.vgg19(RNG))
     if key == 'vgg19_bn':
       return (torch_models.vgg19_bn(True), flax_models.vgg19_bn(RNG))
-    if key == 'densenet121':
-      return (torch_models.densenet121(True), flax_models.densenet121(RNG))
-    if key == 'densenet161':
-      return (torch_models.densenet161(True), flax_models.densenet161(RNG))
-    if key == 'densenet169':
-      return (torch_models.densenet169(True), flax_models.densenet169(RNG))
-    if key == 'densenet201':
-      return (torch_models.densenet201(True), flax_models.densenet201(RNG))
     if key == 'resnet18':
       return (torch_models.resnet18(True), flax_models.resnet18(RNG))
     if key == 'resnet34':
@@ -61,6 +53,14 @@ class TestModels(unittest.TestCase):
       return (torch_models.wide_resnet50_2(True), flax_models.wide_resnet50_2(RNG))
     if key == 'wide_resnet101_2':
       return (torch_models.wide_resnet101_2(True), flax_models.wide_resnet101_2(RNG))
+    if key == 'densenet121':
+      return (torch_models.densenet121(True), flax_models.densenet121(RNG))
+    if key == 'densenet161':
+      return (torch_models.densenet161(True), flax_models.densenet161(RNG))
+    if key == 'densenet169':
+      return (torch_models.densenet169(True), flax_models.densenet169(RNG))
+    if key == 'densenet201':
+      return (torch_models.densenet201(True), flax_models.densenet201(RNG))
     if key == 'inception_v3':
       return (torch_models.inception_v3(True), flax_models.inception_v3(RNG))
 

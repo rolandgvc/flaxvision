@@ -10,10 +10,11 @@ def load_torch_params(url):
 
 def torch_to_flax(torch_params, get_flax_keys):
   """Convert PyTorch parameters to nested dictionaries"""
+
   def add_to_params(params_dict, nested_keys, param, is_conv=False):
     if len(nested_keys) == 1:
       key, = nested_keys
-      params_dict[key] = np.transpose(param, (2,3,1,0)) if is_conv else np.transpose(param)
+      params_dict[key] = np.transpose(param, (2, 3, 1, 0)) if is_conv else np.transpose(param)
     else:
       assert len(nested_keys) > 1
       first_key = nested_keys[0]
@@ -43,7 +44,7 @@ def torch_to_flax(torch_params, get_flax_keys):
 def max_pool(x, pool_size, strides, padding):
   """Temporary fix for pooling with explicit padding"""
   _padding = [(0, 0)] + padding + [(0, 0)]
-  x = jnp.pad(x, _padding, 'constant', (0,0))
+  x = jnp.pad(x, _padding, 'constant', (0, 0))
   x = nn.max_pool(x, pool_size, strides)
   return x
 
@@ -51,6 +52,6 @@ def max_pool(x, pool_size, strides, padding):
 def avg_pool(x, kernel_size, strides, padding):
   """Temporary fix for pooling with explicit padding"""
   _padding = [(0, 0)] + padding + [(0, 0)]
-  x = jnp.pad(x, _padding, 'constant', (0,0))
+  x = jnp.pad(x, _padding, 'constant', (0, 0))
   x = nn.avg_pool(x, kernel_size, strides)
   return x

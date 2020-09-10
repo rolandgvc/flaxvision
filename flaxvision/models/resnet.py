@@ -3,37 +3,50 @@ import jax.numpy as jnp
 import numpy as np
 from .. import utils
 
-
 model_urls = {
-  'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
-  'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
-  'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
-  'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
-  'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
-  'resnext50_32x4d': 'https://download.pytorch.org/models/resnext50_32x4d-7cdf4587.pth',
-  'resnext101_32x8d': 'https://download.pytorch.org/models/resnext101_32x8d-8ba56ff5.pth',
-  'wide_resnet50_2': 'https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth',
-  'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
+    'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
+    'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
+    'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
+    'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
+    'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
+    'resnext50_32x4d': 'https://download.pytorch.org/models/resnext50_32x4d-7cdf4587.pth',
+    'resnext101_32x8d': 'https://download.pytorch.org/models/resnext101_32x8d-8ba56ff5.pth',
+    'wide_resnet50_2': 'https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth',
+    'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
 }
-
 
 conv1x1 = nn.Conv.partial(kernel_size=(1, 1), padding='VALID', bias=False)
 
-def conv3x3(x, features, strides=(1, 1), groups=1,  name='conv3x3'):
+
+def conv3x3(x, features, strides=(1, 1), groups=1, name='conv3x3'):
   """Same padding as in pytorch"""
-  x = jnp.pad(x, [(0, 0), (1, 1), (1, 1), (0, 0)], 'constant', (0,0))
-  return nn.Conv(x, features, (3, 3), strides, padding='VALID',
-                 feature_group_count=groups, bias=False, name=name)
+  x = jnp.pad(x, [(0, 0), (1, 1), (1, 1), (0, 0)], 'constant', (0, 0))
+  return nn.Conv(
+      x,
+      features, (3, 3),
+      strides,
+      padding='VALID',
+      feature_group_count=groups,
+      bias=False,
+      name=name)
 
 
 class BasicBlock(nn.Module):
   expansion = 1
 
-  def apply(self, x, features, strides=(1, 1), downsample=False, groups=1,
-            base_width=64, norm=None, train=False, dtype=jnp.float32):
+  def apply(self,
+            x,
+            features,
+            strides=(1, 1),
+            downsample=False,
+            groups=1,
+            base_width=64,
+            norm=None,
+            train=False,
+            dtype=jnp.float32):
     if norm is None:
-        norm = nn.BatchNorm.partial(use_running_average=not train,
-                                    momentum=0.9, epsilon=1e-5, dtype=dtype)
+      norm = nn.BatchNorm.partial(
+          use_running_average=not train, momentum=0.9, epsilon=1e-5, dtype=dtype)
     identity = x
 
     out = conv3x3(x, features, strides=strides, name='conv1')
@@ -56,11 +69,19 @@ class BasicBlock(nn.Module):
 class Bottleneck(nn.Module):
   expansion = 4
 
-  def apply(self, x, features, strides=(1, 1), downsample=False, groups=1,
-            base_width=64, norm=None, train=False, dtype=jnp.float32):
+  def apply(self,
+            x,
+            features,
+            strides=(1, 1),
+            downsample=False,
+            groups=1,
+            base_width=64,
+            norm=None,
+            train=False,
+            dtype=jnp.float32):
     if norm is None:
-        norm = nn.BatchNorm.partial(use_running_average=not train,
-                                    momentum=0.9, epsilon=1e-5, dtype=dtype)
+      norm = nn.BatchNorm.partial(
+          use_running_average=not train, momentum=0.9, epsilon=1e-5, dtype=dtype)
     width = int(features * (base_width / 64.)) * groups
     identity = x
 
@@ -86,6 +107,7 @@ class Bottleneck(nn.Module):
 
 
 class Layer(nn.Module):
+
   def apply(self, x, block, block_size, **kwargs):
     x = block(x, **kwargs, name='block1')
 
@@ -99,19 +121,27 @@ class Layer(nn.Module):
 
 
 class ResNet(nn.Module):
-  def apply(self, x, block, layers, num_classes=1000, groups=1,
-            width_per_group=64, train=False, dtype=jnp.float32):
-    norm = nn.BatchNorm.partial(use_running_average=not train,
-                                momentum=0.9, epsilon=1e-5, dtype=dtype)
 
-    x = nn.Conv(x, 64, (7, 7), (2, 2), padding=[(3, 3), (3, 3)],
-                bias=False, dtype=dtype, name='conv1')
+  def apply(self,
+            x,
+            block,
+            layers,
+            num_classes=1000,
+            groups=1,
+            width_per_group=64,
+            train=False,
+            dtype=jnp.float32):
+    norm = nn.BatchNorm.partial(
+        use_running_average=not train, momentum=0.9, epsilon=1e-5, dtype=dtype)
+
+    x = nn.Conv(
+        x, 64, (7, 7), (2, 2), padding=[(3, 3), (3, 3)], bias=False, dtype=dtype, name='conv1')
     x = norm(x, name='bn1')
     x = nn.relu(x)
     x = utils.max_pool(x, (3, 3), strides=(2, 2), padding=[(1, 1), (1, 1)])
 
     for i, block_size in enumerate(layers):
-      features = 64 * 2 ** i
+      features = 64 * 2**i
       downsample = False
       strides = (2, 2) if i > 0 else (1, 1)
 
@@ -142,9 +172,9 @@ def _get_flax_keys(keys):
   layer_idx = None
   if len(keys) == 2:  # first layer and classifier
     layer, param = keys
-  elif len(keys) == 4: # block layer
+  elif len(keys) == 4:  # block layer
     layerblock, block_idx, layer, param = keys
-  elif len(keys) == 5: # downsample layer
+  elif len(keys) == 5:  # downsample layer
     layerblock, block_idx, layer, layer_idx, param = keys
 
   if layer_idx == '0':

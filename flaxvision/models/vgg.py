@@ -3,20 +3,20 @@ import jax.numpy as jnp
 import numpy as np
 from .. import utils
 
-
 model_urls = {
-  'vgg11': 'https://download.pytorch.org/models/vgg11-bbd30ac9.pth',
-  'vgg13': 'https://download.pytorch.org/models/vgg13-c768596a.pth',
-  'vgg16': 'https://download.pytorch.org/models/vgg16-397923af.pth',
-  'vgg19': 'https://download.pytorch.org/models/vgg19-dcbb9e9d.pth',
-  'vgg11_bn': 'https://download.pytorch.org/models/vgg11_bn-6002323d.pth',
-  'vgg13_bn': 'https://download.pytorch.org/models/vgg13_bn-abd245e5.pth',
-  'vgg16_bn': 'https://download.pytorch.org/models/vgg16_bn-6c64b313.pth',
-  'vgg19_bn': 'https://download.pytorch.org/models/vgg19_bn-c79401a0.pth',
+    'vgg11': 'https://download.pytorch.org/models/vgg11-bbd30ac9.pth',
+    'vgg13': 'https://download.pytorch.org/models/vgg13-c768596a.pth',
+    'vgg16': 'https://download.pytorch.org/models/vgg16-397923af.pth',
+    'vgg19': 'https://download.pytorch.org/models/vgg19-dcbb9e9d.pth',
+    'vgg11_bn': 'https://download.pytorch.org/models/vgg11_bn-6002323d.pth',
+    'vgg13_bn': 'https://download.pytorch.org/models/vgg13_bn-abd245e5.pth',
+    'vgg16_bn': 'https://download.pytorch.org/models/vgg16_bn-6c64b313.pth',
+    'vgg19_bn': 'https://download.pytorch.org/models/vgg19_bn-c79401a0.pth',
 }
 
 
 class Classifier(nn.Module):
+
   def apply(self, x, num_classes=1000, train=False, dtype=jnp.float32):
     x = nn.Dense(x, 4096, dtype=dtype)
     x = nn.relu(x)
@@ -29,6 +29,7 @@ class Classifier(nn.Module):
 
 
 class Features(nn.Module):
+
   def apply(self, x, cfg, batch_norm=False, train=False, dtype=jnp.float32):
     for v in cfg:
       if v == 'M':
@@ -42,6 +43,7 @@ class Features(nn.Module):
 
 
 class VGG(nn.Module):
+
   def apply(self, x, rng, cfg, num_classes=1000, batch_norm=False, train=False, dtype=jnp.float32):
     x = Features(x, cfg, batch_norm, train, dtype, name='features')
     x = x.transpose((0, 3, 1, 2))
@@ -51,7 +53,7 @@ class VGG(nn.Module):
 
 
 def _torch_to_flax(torch_params, cfg, batch_norm=False):
-  flax_params, flax_state  = {}, {}
+  flax_params, flax_state = {}, {}
   conv_idx = 0
   bn_idx = 1
 
@@ -65,27 +67,27 @@ def _torch_to_flax(torch_params, cfg, batch_norm=False):
   for layer_cfg in cfg:
     if isinstance(layer_cfg, int):
       flax_params['features'][f'Conv_{conv_idx}'] = {
-        'kernel': np.transpose(next_tensor(), (2,3,1,0)),
-        'bias': next_tensor(),
+          'kernel': np.transpose(next_tensor(), (2, 3, 1, 0)),
+          'bias': next_tensor(),
       }
       conv_idx += 2 if batch_norm else 1
 
       if batch_norm:
         flax_params['features'][f'BatchNorm_{bn_idx}'] = {
-          'scale': next_tensor(),
-          'bias': next_tensor(),
+            'scale': next_tensor(),
+            'bias': next_tensor(),
         }
         flax_state[f'/features/BatchNorm_{bn_idx}'] = {
-          'mean': next_tensor(),
-          'var': next_tensor(),
+            'mean': next_tensor(),
+            'var': next_tensor(),
         }
         bn_idx += 2
 
   flax_params['classifier'] = {}
   for idx in range(3):
     flax_params['classifier'][f'Dense_{idx}'] = {
-      'kernel': np.transpose(next_tensor()),
-      'bias': next_tensor(),
+        'kernel': np.transpose(next_tensor()),
+        'bias': next_tensor(),
     }
 
   return flax_params, flax_state
@@ -95,7 +97,10 @@ cfgs = {
     'A': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
     'B': [64, 64, 'M', 128, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
     'D': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M'],
-    'E': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M'],
+    'E': [
+        64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512,
+        512, 'M'
+    ],
 }
 
 

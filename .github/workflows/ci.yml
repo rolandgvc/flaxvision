@@ -27,4 +27,4 @@ jobs:
         pip install -v .[testing]
     - name: Test with pytest
       run: |
-        tests/run_tests.sh
+        . tests/run_tests.sh

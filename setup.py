@@ -28,5 +28,5 @@ setup(
     install_requires=install_requires,
     extras_require={
         "testing": tests_require,
-    },
+    }
 )

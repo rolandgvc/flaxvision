@@ -12,9 +12,10 @@ import logging
 RNG = random.PRNGKey(0)
 
 MODELS_LIST = [
-    'vgg13', 'vgg13_bn', 'vgg16', 'vgg16_bn', 'vgg19', 'vgg19_bn', 'resnet18', 'resnet34',
-    'resnet50', 'resnet101', 'resnet152', 'resnext50_32x4d', 'resnext101_32x8d', 'wide_resnet50_2',
-    'wide_resnet101_2', 'densenet121', 'densenet161', 'densenet169', 'densenet201', 'inception_v3'
+    'vgg11', 'vgg11_bn', 'vgg13', 'vgg13_bn', 'vgg16', 'vgg16_bn', 'vgg19', 'vgg19_bn', 'resnet18',
+    'resnet34', 'resnet50', 'resnet101', 'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
+    'wide_resnet50_2', 'wide_resnet101_2', 'densenet121', 'densenet161', 'densenet169', 'densenet201',
+    'inception_v3'
 ]
 
 
@@ -42,8 +43,12 @@ class TestModels(unittest.TestCase):
             "PyTorch and Flax models' outputs don't match.")
       else:
         torch_out = torch_model(torch_input).detach().numpy()
-        with nn.stateful(nn.Collection(flax_state), mutable=False):
-          flax_out = flax_model(flax_input)
+        # Temporary condition for models updated to the Linen API
+        if 'vgg' in key:
+          flax_out = flax_model(train=False).apply(flax_state, flax_input, mutable=False)
+        else:
+          with nn.stateful(nn.Collection(flax_state), mutable=False):
+            flax_out = flax_model(flax_input)
         self.assertLess(
             np.mean(np.abs(flax_out - torch_out)), 0.0001,
             "PyTorch and Flax models' outputs don't match.")
@@ -51,6 +56,10 @@ class TestModels(unittest.TestCase):
       del torch_model, flax_model, flax_state
 
   def _get_model(self, key):
+    if key == 'vgg11':
+      return (torch_models.vgg11(True), flax_models.vgg11(RNG))
+    if key == 'vgg11_bn':
+      return (torch_models.vgg11_bn(True), flax_models.vgg11_bn(RNG))
     if key == 'vgg13':
       return (torch_models.vgg13(True), flax_models.vgg13(RNG))
     if key == 'vgg13_bn':

@@ -44,7 +44,7 @@ class TestModels(unittest.TestCase):
       else:
         torch_out = torch_model(torch_input).detach().numpy()
         # Temporary condition for models updated to the Linen API
-        if 'vgg' in key:
+        if 'vgg' in key or 'res' in key:
           flax_out = flax_model(train=False).apply(flax_state, flax_input, mutable=False)
         else:
           with nn.stateful(nn.Collection(flax_state), mutable=False):

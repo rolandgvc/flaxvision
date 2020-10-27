@@ -55,7 +55,6 @@ class Features(nn.Module):
 
 
 class VGG(nn.Module):
-  rng: Any
   cfg: Sequence[Any]
   num_classes: int = 1000
   batch_norm: bool = False
@@ -123,46 +122,46 @@ cfgs = {
 }
 
 
-def _vgg(arch, cfg, rng, batch_norm, pretrained, **kwargs):
-  vgg = functools.partial(VGG, rng=rng, cfg=cfgs[cfg], batch_norm=batch_norm, **kwargs)
+def _vgg(rng, arch, cfg, batch_norm, pretrained, **kwargs):
+  vgg = functools.partial(VGG, cfg=cfgs[cfg], batch_norm=batch_norm, **kwargs)
 
   if pretrained:
     torch_params = utils.load_torch_params(model_urls[arch])
     flax_params = FrozenDict(_torch_to_flax(torch_params, cfgs[cfg], batch_norm))
   else:
     init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
-    flax_params = VGG(rng=rng, cfg=cfgs[cfg], batch_norm=batch_norm, **kwargs).init(rng, init_batch)
+    flax_params = VGG(cfg=cfgs[cfg], batch_norm=batch_norm, **kwargs).init(rng, init_batch)
 
   return vgg, flax_params
 
 
 def vgg11(rng, pretrained=True, **kwargs):
-  return _vgg('vgg11', 'A', rng, False, pretrained, **kwargs)
+  return _vgg(rng, 'vgg11', 'A', False, pretrained, **kwargs)
 
 
 def vgg11_bn(rng, pretrained=True, **kwargs):
-  return _vgg('vgg11_bn', 'A', rng, True, pretrained, **kwargs)
+  return _vgg(rng, 'vgg11_bn', 'A', True, pretrained, **kwargs)
 
 
 def vgg13(rng, pretrained=True, **kwargs):
-  return _vgg('vgg13', 'B', rng, False, pretrained, **kwargs)
+  return _vgg(rng, 'vgg13', 'B', False, pretrained, **kwargs)
 
 
 def vgg13_bn(rng, pretrained=True, **kwargs):
-  return _vgg('vgg13_bn', 'B', rng, True, pretrained, **kwargs)
+  return _vgg(rng, 'vgg13_bn', 'B', True, pretrained, **kwargs)
 
 
 def vgg16(rng, pretrained=True, **kwargs):
-  return _vgg('vgg16', 'D', rng, False, pretrained, **kwargs)
+  return _vgg(rng, 'vgg16', 'D', False, pretrained, **kwargs)
 
 
 def vgg16_bn(rng, pretrained=True, **kwargs):
-  return _vgg('vgg16_bn', 'D', rng, True, pretrained, **kwargs)
+  return _vgg(rng, 'vgg16_bn', 'D', True, pretrained, **kwargs)
 
 
 def vgg19(rng, pretrained=True, **kwargs):
-  return _vgg('vgg19', 'E', rng, False, pretrained, **kwargs)
+  return _vgg(rng, 'vgg19', 'E', False, pretrained, **kwargs)
 
 
 def vgg19_bn(rng, pretrained=True, **kwargs):
-  return _vgg('vgg19_bn', 'E', rng, True, pretrained, **kwargs)
+  return _vgg(rng, 'vgg19_bn', 'E', True, pretrained, **kwargs)

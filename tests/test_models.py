@@ -36,8 +36,7 @@ class TestModels(unittest.TestCase):
 
       if key == 'inception_v3':
         torch_out = torch_model(torch_inception_input).detach().numpy()
-        with nn.stateful(nn.Collection(flax_state), mutable=False):
-          flax_out = flax_model(flax_inception_input)
+        flax_out = flax_model(train=False).apply(flax_state, flax_inception_input, mutable=False)
         self.assertLess(
             np.mean(np.abs(flax_out[0] - torch_out)), 0.0001,
             "PyTorch and Flax models' outputs don't match.")

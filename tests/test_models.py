@@ -12,10 +12,10 @@ import logging
 RNG = random.PRNGKey(0)
 
 MODELS_LIST = [
-  'vgg11', 'vgg11_bn', 'vgg13', 'vgg13_bn', 'vgg16', 'vgg16_bn', 'vgg19', 'vgg19_bn', 'resnet18',
-  'resnet34', 'resnet50', 'resnet101', 'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
-  'wide_resnet50_2', 'wide_resnet101_2', 'densenet121', 'densenet161', 'densenet169', 'densenet201',
-  'inception_v3'
+  'vgg11', 'vgg11_bn', 'vgg13', 'vgg13_bn', 'vgg16', 'vgg16_bn', 'vgg19', 'vgg19_bn',
+  'resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152', 'resnext50_32x4d',
+  'resnext101_32x8d', 'wide_resnet50_2', 'wide_resnet101_2', 'inception_v3',
+  'densenet121', 'densenet161', 'densenet169', 'densenet201'
 ]
 
 
@@ -31,28 +31,22 @@ class TestModels(unittest.TestCase):
 
     for key in MODELS_LIST:
       log.info(f'testing {key}')
-      torch_model, (flax_model, flax_state) = self._get_model(key)
+      torch_model, (flax_model, flax_params) = self._get_model(key)
       torch_model.eval()
 
       if key == 'inception_v3':
         torch_out = torch_model(torch_inception_input).detach().numpy()
-        flax_out = flax_model(train=False).apply(flax_state, flax_inception_input, mutable=False)
-        self.assertLess(
-            np.mean(np.abs(flax_out[0] - torch_out)), 0.0001,
-            "PyTorch and Flax models' outputs don't match.")
+        flax_out = flax_model(train=False).apply(flax_params, flax_inception_input, mutable=False)
+        self.assertLess( np.mean(np.abs(flax_out[0] - torch_out)), 0.0001,
+                        "PyTorch and Flax models' outputs don't match.")
       else:
         torch_out = torch_model(torch_input).detach().numpy()
-        # Temporary condition for models updated to the Linen API
-        if 'vgg' in key or 'res' in key:
-          flax_out = flax_model(train=False).apply(flax_state, flax_input, mutable=False)
-        else:
-          with nn.stateful(nn.Collection(flax_state), mutable=False):
-            flax_out = flax_model(flax_input)
-        self.assertLess(
-            np.mean(np.abs(flax_out - torch_out)), 0.0001,
-            "PyTorch and Flax models' outputs don't match.")
+        flax_out = flax_model(train=False).apply(flax_params, flax_input, mutable=False)
+        self.assertLess(np.mean(np.abs(flax_out - torch_out)), 0.0001,
+                        "PyTorch and Flax models' outputs don't match.")
 
-      del torch_model, flax_model, flax_state
+      del torch_model, flax_model, flax_params
+
 
   def _get_model(self, key):
     if key == 'vgg11':
@@ -89,6 +83,8 @@ class TestModels(unittest.TestCase):
       return (torch_models.wide_resnet50_2(True), flax_models.wide_resnet50_2(RNG))
     if key == 'wide_resnet101_2':
       return (torch_models.wide_resnet101_2(True), flax_models.wide_resnet101_2(RNG))
+    if key == 'inception_v3':
+      return (torch_models.inception_v3(True), flax_models.inception_v3(RNG))
     if key == 'densenet121':
       return (torch_models.densenet121(True), flax_models.densenet121(RNG))
     if key == 'densenet161':
@@ -97,8 +93,6 @@ class TestModels(unittest.TestCase):
       return (torch_models.densenet169(True), flax_models.densenet169(RNG))
     if key == 'densenet201':
       return (torch_models.densenet201(True), flax_models.densenet201(RNG))
-    if key == 'inception_v3':
-      return (torch_models.inception_v3(True), flax_models.inception_v3(RNG))
 
 
 if __name__ == '__main__':

@@ -5,6 +5,8 @@ from flax import nn
 import numpy as np
 import jax.numpy as jnp
 from jax import random
+from jax.config import config
+config.enable_omnistaging()
 
 import unittest, os
 import logging

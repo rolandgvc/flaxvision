@@ -128,12 +128,11 @@ class Backbone(nn.Module):
   groups: int = 1
   width_per_group: int = 64
   replace_stride_with_dilation: Any = None
-  train: bool = False
   dtype: Any = jnp.float32
 
   @nn.compact
-  def __call__(self, inputs):
-    norm = functools.partial(nn.BatchNorm, use_running_average=not self.train,
+  def __call__(self, inputs, train: bool = False):
+    norm = functools.partial(nn.BatchNorm, use_running_average=not train,
                              momentum=0.9, epsilon=1e-5, dtype=self.dtype)
 
     if self.replace_stride_with_dilation is None:
@@ -177,7 +176,6 @@ class Backbone(nn.Module):
         'dtype': self.dtype,
       }
 
-      # print(f'Layer {i+1}')
       x = Layer(self.block, block_size, dilation, kwargs, name=f'layer{i+1}')(x)
 
     x = x.transpose((0, 3, 1, 2))
@@ -193,17 +191,20 @@ class ResNet(nn.Module):
   groups: int = 1
   width_per_group: int = 64
   replace_stride_with_dilation: Any = None
-  train: bool = False
   dtype: Any = jnp.float32
 
+  @staticmethod
+  def make_backbone(self):
+    return Backbone(self.block, self.layers, self.num_classes, self.groups,
+                    self.width_per_group, self.replace_stride_with_dilation,
+                    self.dtype)
+
   def setup(self):
-    self.backbone = Backbone(self.block, self.layers, self.num_classes, self.groups,
-                             self.width_per_group, self.replace_stride_with_dilation,
-                             self.train, self.dtype)
+    self.backbone = ResNet.make_backbone(self)
     self.classifier = nn.Dense(self.num_classes, dtype=self.dtype)
 
-  def __call__(self, inputs):
-    x = self.backbone(inputs)
+  def __call__(self, inputs, train: bool = False):
+    x = self.backbone(inputs, train)
     x = self.classifier(x)
 
     return x
@@ -241,7 +242,7 @@ def _get_flax_keys(keys):
 
 
 def _resnet(rng, arch, block, layers, pretrained, **kwargs):
-  resnet = functools.partial(ResNet, block=block, layers=layers, **kwargs)
+  resnet = ResNet(block=block, layers=layers, **kwargs)
 
   if pretrained:
     torch_params = utils.load_torch_params(model_urls[arch])

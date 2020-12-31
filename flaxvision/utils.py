@@ -20,7 +20,8 @@ def torch_to_flax(torch_params, get_flax_keys):
       first_key = nested_keys[0]
       if first_key not in params_dict:
         params_dict[first_key] = {}
-      add_to_params(params_dict[first_key], nested_keys[1:], param, 'conv' in first_key)
+      add_to_params(params_dict[first_key], nested_keys[1:], param, ('conv' in first_key and \
+                                                                     nested_keys[-1] != 'bias'))
 
   def add_to_state(state_dict, keys, param):
     key_str = ''
@@ -32,6 +33,8 @@ def torch_to_flax(torch_params, get_flax_keys):
 
   flax_params, flax_state = {}, {}
   for key, tensor in torch_params.items():
+    if flax_keys[-1] is None:
+      continue
     flax_keys = get_flax_keys(key.split('.'))
     if flax_keys[-1] == 'mean' or flax_keys[-1] == 'var':
       add_to_state(flax_state, flax_keys, tensor.detach().numpy())
@@ -53,14 +56,16 @@ def torch_to_linen(torch_params, get_flax_keys):
       first_key = nested_keys[0]
       if first_key not in params_dict:
         params_dict[first_key] = {}
-      add_to_params(params_dict[first_key], nested_keys[1:], param, 'conv' in first_key)
+      add_to_params(params_dict[first_key], nested_keys[1:], param, ('conv' in first_key and \
+                                                                     nested_keys[-1] != 'bias'))
 
   flax_params = {'params':{}, 'batch_stats':{}}
   for key, tensor in torch_params.items():
     flax_keys = get_flax_keys(key.split('.'))
-    if flax_keys[-1] in ('mean', 'var'):
-      add_to_params(flax_params['batch_stats'], flax_keys, tensor.detach().numpy())
-    else:
-      add_to_params(flax_params['params'], flax_keys, tensor.detach().numpy())
+    if flax_keys[-1] is not None:
+      if flax_keys[-1] in ('mean', 'var'):
+        add_to_params(flax_params['batch_stats'], flax_keys, tensor.detach().numpy())
+      else:
+        add_to_params(flax_params['params'], flax_keys, tensor.detach().numpy())
 
   return flax_params

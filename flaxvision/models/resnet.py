@@ -178,9 +178,6 @@ class Backbone(nn.Module):
 
       x = Layer(self.block, block_size, dilation, kwargs, name=f'layer{i+1}')(x)
 
-    x = x.transpose((0, 3, 1, 2))
-    x = jnp.mean(x, axis=(2, 3))
-
     return x
 
 
@@ -205,6 +202,8 @@ class ResNet(nn.Module):
 
   def __call__(self, inputs, train: bool = False):
     x = self.backbone(inputs, train)
+    x = x.transpose((0, 3, 1, 2))
+    x = jnp.mean(x, axis=(2, 3))
     x = self.classifier(x)
 
     return x
@@ -233,10 +232,10 @@ def _get_flax_keys(keys):
     layer = 'classifier'
 
   if layerblock:
-    return ['backbone'] + [layerblock, f'block{int(block_idx)+1}', layer, param]
+    return ['backbone', layerblock, f'block{int(block_idx)+1}', layer, param]
 
   if 'classifier' != layer:
-    return ['backbone'] + [layer, param]
+    return ['backbone', layer, param]
 
   return [layer, param]
 

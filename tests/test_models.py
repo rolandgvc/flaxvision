@@ -14,10 +14,10 @@ import logging
 RNG = random.PRNGKey(0)
 
 MODELS_LIST = [
-  'vgg11', 'vgg11_bn', 'vgg13', 'vgg13_bn', 'vgg16', 'vgg16_bn', 'vgg19', 'vgg19_bn',
-  'resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152', 'resnext50_32x4d',
-  'resnext101_32x8d', 'wide_resnet50_2', 'wide_resnet101_2', 'inception_v3',
-  'densenet121', 'densenet161', 'densenet169', 'densenet201'
+    # 'vgg11', 'vgg11_bn', 'vgg13', 'vgg13_bn', 'vgg16', 'vgg16_bn', 'vgg19', 'vgg19_bn', 'resnet18', 'resnet34',
+    'resnet50', 'resnet101', 'resnet152', 'resnext50_32x4d', 'resnext101_32x8d', 'wide_resnet50_2', 'wide_resnet101_2',
+    # 'inception_v3', 'densenet121', 'densenet161', 'densenet169', 'densenet201', 'fcn_resnet50', 'fcn_resnet101',
+    # 'deeplabv3_resnet50', 'deeplabv3_resnet101'
 ]
 
 
@@ -28,6 +28,7 @@ class TestModels(unittest.TestCase):
 
     flax_input = jnp.ones((1, 224, 224, 3))
     torch_input = torch.ones([1, 3, 224, 224])
+
     flax_inception_input = jnp.ones((1, 299, 299, 3))
     torch_inception_input = torch.ones([1, 3, 299, 299])
 
@@ -37,18 +38,21 @@ class TestModels(unittest.TestCase):
       torch_model.eval()
 
       if key == 'inception_v3':
-        torch_out = torch_model(torch_inception_input).detach().numpy()
-        flax_out = flax_model(train=False).apply(flax_params, flax_inception_input, mutable=False)
-        self.assertLess( np.mean(np.abs(flax_out[0] - torch_out)), 0.0001,
-                        "PyTorch and Flax models' outputs don't match.")
+        with torch.no_grad():
+          torch_out = torch_model(torch_inception_input).detach().numpy()
+        flax_out = flax_model.apply(flax_params, flax_inception_input, mutable=False)
+        self.assertLess(
+            np.mean(np.abs(flax_out[0] - torch_out)), 0.0001, "PyTorch and Flax models' outputs don't match.")
       else:
-        torch_out = torch_model(torch_input).detach().numpy()
-        flax_out = flax_model(train=False).apply(flax_params, flax_input, mutable=False)
-        self.assertLess(np.mean(np.abs(flax_out - torch_out)), 0.0001,
-                        "PyTorch and Flax models' outputs don't match.")
+        with torch.no_grad():
+          if 'fcn' in key or 'deeplab' in key:
+            torch_out = torch_model(torch_input)['out'].detach().numpy()
+          else:
+            torch_out = torch_model(torch_input).detach().numpy()
+        flax_out = flax_model.apply(flax_params, flax_input, mutable=False)
+        self.assertLess(np.mean(np.abs(flax_out - torch_out)), 0.0001, "PyTorch and Flax models' outputs don't match.")
 
       del torch_model, flax_model, flax_params
-
 
   def _get_model(self, key):
     if key == 'vgg11':
@@ -95,6 +99,14 @@ class TestModels(unittest.TestCase):
       return (torch_models.densenet169(True), flax_models.densenet169(RNG))
     if key == 'densenet201':
       return (torch_models.densenet201(True), flax_models.densenet201(RNG))
+    if key == 'fcn_resnet50':
+      return (torch_models.segmentation.fcn_resnet50(True), flax_models.fcn_resnet50(RNG))
+    if key == 'fcn_resnet101':
+      return (torch_models.segmentation.fcn_resnet101(True), flax_models.fcn_resnet101(RNG))
+    if key == 'deeplabv3_resnet50':
+      return (torch_models.segmentation.deeplabv3_resnet50(True), flax_models.deeplabv3_resnet50(RNG))
+    if key == 'deeplabv3_resnet101':
+      return (torch_models.segmentation.deeplabv3_resnet101(True), flax_models.deeplabv3_resnet101(RNG))
 
 
 if __name__ == '__main__':

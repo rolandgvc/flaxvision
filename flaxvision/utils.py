@@ -45,7 +45,7 @@ def torch_to_flax(torch_params, get_flax_keys):
 
 
 def torch_to_linen(torch_params, get_flax_keys):
-  """Convert PyTorch parameters to nested dictionaries"""
+  """Convert PyTorch parameters to Linen nested dictionaries"""
 
   def add_to_params(params_dict, nested_keys, param, is_conv=False):
     if len(nested_keys) == 1:
@@ -59,7 +59,7 @@ def torch_to_linen(torch_params, get_flax_keys):
       add_to_params(params_dict[first_key], nested_keys[1:], param, ('conv' in first_key and \
                                                                      nested_keys[-1] != 'bias'))
 
-  flax_params = {'params':{}, 'batch_stats':{}}
+  flax_params = {'params': {}, 'batch_stats': {}}
   for key, tensor in torch_params.items():
     flax_keys = get_flax_keys(key.split('.'))
     if flax_keys[-1] is not None:

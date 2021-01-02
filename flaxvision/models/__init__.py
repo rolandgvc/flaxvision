@@ -20,3 +20,7 @@ from .densenet import densenet161
 from .densenet import densenet169
 from .densenet import densenet201
 from .inception import inception_v3
+from .segmentation import fcn_resnet50
+from .segmentation import fcn_resnet101
+from .segmentation import deeplabv3_resnet50
+from .segmentation import deeplabv3_resnet101

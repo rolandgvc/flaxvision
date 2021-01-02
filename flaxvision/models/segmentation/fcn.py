@@ -1,19 +1,20 @@
 from flax import linen as nn
 import numpy as np
 
+
 class FCNHead(nn.Module):
-    channels: int
+  channels: int
 
-    @nn.compact
-    def __call__(self, inputs, train=False):
-        inter_channels = np.shape(inputs)[-1] // 4
-        x = nn.Conv(inter_channels, (3,3), padding='SAME', use_bias=False, name="conv1")(inputs)
-        x = nn.BatchNorm(use_running_average=not train, name="bn1")(x)
-        x = nn.relu(x)
-        x = nn.Dropout(0.1)(x, deterministic=not train)
-        x = nn.Conv(self.channels, (1,1), padding='VALID', use_bias=True, name="conv2")(x)
+  @nn.compact
+  def __call__(self, inputs, train: bool = False):
+    inter_channels = np.shape(inputs)[-1] // 4
+    x = nn.Conv(inter_channels, (3, 3), padding='SAME', use_bias=False, name="conv1")(inputs)
+    x = nn.BatchNorm(use_running_average=not train, name="bn1")(x)
+    x = nn.relu(x)
+    x = nn.Dropout(0.1)(x, deterministic=not train)
+    x = nn.Conv(self.channels, (1, 1), padding='VALID', use_bias=True, name="conv2")(x)
 
-        return x
+    return x
 
 
 def fcn_keys(keys):
@@ -45,7 +46,7 @@ def fcn_keys(keys):
       return [baseblock, layerblock, f'block{int(block_idx)+1}', layer, param]
     return [baseblock, layer, param]
   elif baseblock == 'classifier':
-    layer = 'conv1' if layer=='0' else ('bn1' if layer=='1' else 'conv2')
+    layer = 'conv1' if layer == '0' else ('bn1' if layer == '1' else 'conv2')
     if 'bn' in layer and param == 'kernel':
       param = 'scale'
     return [baseblock, layer, param]

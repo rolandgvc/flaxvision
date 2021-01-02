@@ -1,79 +1,79 @@
+from typing import Sequence
+
 from flax import linen as nn
-import numpy as np
-from jax import numpy as jnp
 import jax
-from typing import Any
+from jax import numpy as jnp
+import numpy as np
 
 
 class DeepLabHead(nn.Module):
-    num_classes: int
+  num_classes: int
 
-    @nn.compact
-    def __call__(self, inputs, train=False):
-        x = ASPP([12, 24, 36], name='ASPP')(inputs)
-        x = nn.Conv(256, (3,3), padding='SAME', use_bias=False, name="conv1")(x)
-        x = nn.BatchNorm(use_running_average=not train, name="bn1")(x)
-        x = nn.relu(x)
-        x = nn.Conv(self.num_classes, (1,1), padding='VALID', use_bias=True, name="conv2")(x)
-        return x
+  @nn.compact
+  def __call__(self, inputs, train: bool = False):
+    x = ASPP([12, 24, 36], name='ASPP')(inputs)
+    x = nn.Conv(256, (3, 3), padding='SAME', use_bias=False, name="conv1")(x)
+    x = nn.BatchNorm(use_running_average=not train, name="bn1")(x)
+    x = nn.relu(x)
+    x = nn.Conv(self.num_classes, (1, 1), padding='VALID', use_bias=True, name="conv2")(x)
+    return x
 
 
 class ASPPConv(nn.Module):
-    channels: int
-    dilation: int
+  channels: int
+  dilation: int
 
-    @nn.compact
-    def __call__(self, inputs, train=False):
-        _d =  max(1, self.dilation)
-        x = jnp.pad(inputs, [(0, 0), (_d, _d), (_d, _d), (0, 0)], 'constant', (0, 0))
-        x = nn.Conv(self.channels, (3,3), padding='VALID', kernel_dilation=(_d, _d), use_bias=False, name='conv1')(x)
-        x = nn.BatchNorm(use_running_average=not train, name="bn1")(x)
-        x = nn.relu(x)
-        return x
+  @nn.compact
+  def __call__(self, inputs, train: bool = False):
+    _d = max(1, self.dilation)
+    x = jnp.pad(inputs, [(0, 0), (_d, _d), (_d, _d), (0, 0)], 'constant', (0, 0))
+    x = nn.Conv(self.channels, (3, 3), padding='VALID', kernel_dilation=(_d, _d), use_bias=False, name='conv1')(x)
+    x = nn.BatchNorm(use_running_average=not train, name="bn1")(x)
+    x = nn.relu(x)
+    return x
 
 
 class ASPPPooling(nn.Module):
-    channels: int
+  channels: int
 
-    @nn.compact
-    def __call__(self, inputs, train=False):
-        in_shape = np.shape(inputs)[1:-1]
-        x = nn.avg_pool(inputs, in_shape)
-        x = nn.Conv(self.channels, (1,1), padding='SAME', use_bias=False, name="conv1")(x)
-        x = nn.BatchNorm(use_running_average=not train, name="bn1")(x)
-        x = nn.relu(x)
+  @nn.compact
+  def __call__(self, inputs, train: bool = False):
+    in_shape = np.shape(inputs)[1:-1]
+    x = nn.avg_pool(inputs, in_shape)
+    x = nn.Conv(self.channels, (1, 1), padding='SAME', use_bias=False, name="conv1")(x)
+    x = nn.BatchNorm(use_running_average=not train, name="bn1")(x)
+    x = nn.relu(x)
 
-        out_shape = (1, in_shape[0], in_shape[1], self.channels)
-        x = jax.image.resize(x, shape=out_shape, method='bilinear')
+    out_shape = (1, in_shape[0], in_shape[1], self.channels)
+    x = jax.image.resize(x, shape=out_shape, method='bilinear')
 
-        return x
+    return x
 
 
 class ASPP(nn.Module):
-    atrous_rates: Any
-    channels: int = 256
+  atrous_rates: Sequence
+  channels: int = 256
 
-    @nn.compact
-    def __call__(self, inputs, train=False):
-        res = []
+  @nn.compact
+  def __call__(self, inputs, train: bool = False):
+    res = []
 
-        x = nn.Conv(self.channels, (1,1), padding='VALID', use_bias=False, name="conv1")(inputs)
-        x = nn.BatchNorm(use_running_average=not train, name="bn1")(x)
-        res.append(nn.relu(x))
+    x = nn.Conv(self.channels, (1, 1), padding='VALID', use_bias=False, name="conv1")(inputs)
+    x = nn.BatchNorm(use_running_average=not train, name="bn1")(x)
+    res.append(nn.relu(x))
 
-        for i, rate in enumerate(self.atrous_rates):
-            res.append(ASPPConv(self.channels, rate, name=f'ASPPConv{i+1}')(inputs))
+    for i, rate in enumerate(self.atrous_rates):
+      res.append(ASPPConv(self.channels, rate, name=f'ASPPConv{i+1}')(inputs))
 
-        res.append(ASPPPooling(self.channels, name='ASPPPooling')(inputs))
-        x = jnp.concatenate(res, -1) # 1280
+    res.append(ASPPPooling(self.channels, name='ASPPPooling')(inputs))
+    x = jnp.concatenate(res, -1)  # 1280
 
-        x = nn.Conv(self.channels, (1,1), padding='VALID', use_bias=False, name="conv2")(x)
-        x = nn.BatchNorm(use_running_average=not train, name="bn2")(x)
-        x = nn.relu(x)
-        x = nn.Dropout(0.5)(x, deterministic=not train)
+    x = nn.Conv(self.channels, (1, 1), padding='VALID', use_bias=False, name="conv2")(x)
+    x = nn.BatchNorm(use_running_average=not train, name="bn2")(x)
+    x = nn.relu(x)
+    x = nn.Dropout(0.5)(x, deterministic=not train)
 
-        return x
-
+    return x
 
 
 def deeplabv3_keys(keys):
@@ -111,7 +111,6 @@ def deeplabv3_keys(keys):
 
     return [baseblock, layer, param]
 
-
   elif baseblock == 'classifier':
     if layer_idx is not None:
       if block_idx == 'convs' and int(layer) < 4 and int(layer) > 0:
@@ -122,7 +121,6 @@ def deeplabv3_keys(keys):
     # ASPP first block
     if block_idx == 'convs' and layer == '0':
       layer = 'conv1' if layer_idx == '0' else 'bn1'
-      # return [baseblock, 'ASPP', layer, param]
 
     # ASPPConv and ASPPPooling
     if block_idx == 'convs':
@@ -138,7 +136,7 @@ def deeplabv3_keys(keys):
       if layer == '1':
         layer = 'bn2'
 
-    layerblock ='ASPP'
+    layerblock = 'ASPP'
 
     # final classifier
     if block_idx is None:
@@ -160,4 +158,3 @@ def deeplabv3_keys(keys):
       return [baseblock, layerblock, layer, param]
 
     return [baseblock, layerblock, aspp_block, layer, param]
-

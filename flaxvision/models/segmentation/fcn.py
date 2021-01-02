@@ -16,17 +16,36 @@ class FCNHead(nn.Module):
         return x
 
 
-'''
-class FCNHead(nn.Sequential):
-    def __init__(self, in_channels, channels):
-        inter_channels = in_channels // 4
-        layers = [
-            nn.Conv2d(in_channels, inter_channels, 3, padding=1, bias=False),
-            nn.BatchNorm2d(inter_channels),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Conv2d(inter_channels, channels, 1)
-        ]
+def fcn_keys(keys):
+  layerblock = None
+  layer_idx = None
 
-        super(FCNHead, self).__init__(*layers)
-'''
+  if len(keys) == 3:  # first layer and classifier
+    baseblock, layer, param = keys
+  elif len(keys) == 5:  # block layer
+    baseblock, layerblock, block_idx, layer, param = keys
+  elif len(keys) == 6:  # downsample layer
+    baseblock, layerblock, block_idx, layer, layer_idx, param = keys
+
+  if 'aux' in baseblock or param == 'num_batches_tracked':
+    return [None]
+
+  if layer_idx == '0':
+    layer = 'downsample_conv'
+  if layer_idx == '1':
+    layer = 'downsample_bn'
+
+  if param == 'weight':
+    param = 'scale' if 'bn' in layer else 'kernel'
+  if 'running' in param:
+    param = 'mean' if 'mean' in param else 'var'
+
+  if baseblock == 'backbone':
+    if layerblock:
+      return [baseblock, layerblock, f'block{int(block_idx)+1}', layer, param]
+    return [baseblock, layer, param]
+  elif baseblock == 'classifier':
+    layer = 'conv1' if layer=='0' else ('bn1' if layer=='1' else 'conv2')
+    if 'bn' in layer and param == 'kernel':
+      param = 'scale'
+    return [baseblock, layer, param]

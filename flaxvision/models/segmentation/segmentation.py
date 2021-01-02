@@ -1,7 +1,7 @@
 from .._utils import IntermediateLayerGetter
 from .. import resnet
-# from .deeplabv3 import DeepLabHead, DeepLabV3
-from .fcn import FCNHead
+from .deeplabv3 import DeepLabHead, deeplabv3_keys
+from .fcn import FCNHead, fcn_keys
 
 from typing import Any, Sequence, Dict
 import functools
@@ -22,6 +22,7 @@ model_urls = {
     'deeplabv3_resnet101_coco': 'https://download.pytorch.org/models/deeplabv3_resnet101_coco-586e9e4e.pth',
 }
 
+segm_heads = { 'fcn': (FCNHead, fcn_keys), 'deeplabv3': (DeepLabHead, deeplabv3_keys) }
 
 class SegmentationModel(nn.Module):
     backbone_fn: Any
@@ -45,11 +46,9 @@ class SegmentationModel(nn.Module):
 
 
 def _make_model(rng, head_name, backbone_name, num_classes, **kwargs):
-    segm_heads = { 'fcn': FCNHead } # 'deeplabv3': DeepLabHead }
-
     resnet_model, _ = resnet.__dict__[backbone_name](rng, replace_stride_with_dilation=[False, True, True])
     backbone_fn = lambda: resnet.ResNet.make_backbone(resnet_model)
-    classifier_fn = lambda: segm_heads[head_name](num_classes)
+    classifier_fn = lambda: segm_heads[head_name][0](num_classes)
 
     return SegmentationModel(backbone_fn, classifier_fn, **kwargs)
 
@@ -63,8 +62,9 @@ def _load_model(rng, arch_type, backbone, pretrained, num_classes, **kwargs):
         if arch not in model_urls:
             raise NotImplementedError('pretrained {} is not supported'.format(arch))
         else:
+            get_flax_keys_fn = segm_heads[arch_type][1]
             torch_params = utils.load_torch_params(model_urls[arch])
-            flax_params = FrozenDict(utils.torch_to_linen(torch_params, _get_flax_keys))
+            flax_params = FrozenDict(utils.torch_to_linen(torch_params, get_flax_keys_fn))
     else:
         init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
         flax_params = model.init(rng, init_batch)
@@ -72,39 +72,6 @@ def _load_model(rng, arch_type, backbone, pretrained, num_classes, **kwargs):
     return model, flax_params
 
 
-def _get_flax_keys(keys):
-  layerblock = None
-  layer_idx = None
-
-  if len(keys) == 3:  # first layer and classifier
-    baseblock, layer, param = keys
-  elif len(keys) == 5:  # block layer
-    baseblock, layerblock, block_idx, layer, param = keys
-  elif len(keys) == 6:  # downsample layer
-    baseblock, layerblock, block_idx, layer, layer_idx, param = keys
-
-  if 'aux' in baseblock or param == 'num_batches_tracked':
-    return [None]
-
-  if layer_idx == '0':
-    layer = 'downsample_conv'
-  if layer_idx == '1':
-    layer = 'downsample_bn'
-
-  if param == 'weight':
-    param = 'scale' if 'bn' in layer else 'kernel'
-  if 'running' in param:
-    param = 'mean' if 'mean' in param else 'var'
-
-  if baseblock == 'backbone':
-    if layerblock:
-      return [baseblock, layerblock, f'block{int(block_idx)+1}', layer, param]
-    return [baseblock, layer, param]
-  elif baseblock == 'classifier':
-    layer = 'conv1' if layer=='0' else ('bn1' if layer=='1' else 'conv2')
-    if 'bn' in layer and param == 'kernel':
-      param = 'scale'
-    return [baseblock, layer, param]
 
 
 def fcn_resnet50(rng, pretrained=True, num_classes=21, **kwargs):

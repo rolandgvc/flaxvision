@@ -1,7 +1,15 @@
-from flax import nn
+from typing import Any, Sequence, Dict, Optional
+from dataclasses import field
+import functools
+
+from flax import linen as nn
+from flax.core import FrozenDict
 import jax.numpy as jnp
 import numpy as np
+
 from .. import utils
+
+ModuleDef = Any
 
 model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
@@ -15,156 +23,209 @@ model_urls = {
     'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
 }
 
-conv1x1 = nn.Conv.partial(kernel_size=(1, 1), padding='VALID', bias=False)
+conv1x1 = functools.partial(nn.Conv, kernel_size=(1, 1), padding='VALID', use_bias=False)
 
 
-def conv3x3(x, features, strides=(1, 1), groups=1, name='conv3x3'):
-  """Same padding as in pytorch"""
-  x = jnp.pad(x, [(0, 0), (1, 1), (1, 1), (0, 0)], 'constant', (0, 0))
+def dilated_conv3x3(x, features, strides=(1, 1), groups=1, dilation=1, name='dilated_conv3x3'):
+  """Use PyTorch's padding style and dilation."""
+  _d = max(1, dilation)
+  x = jnp.pad(x, [(0, 0), (_d, _d), (_d, _d), (0, 0)], 'constant', (0, 0))
   return nn.Conv(
-      x,
       features, (3, 3),
       strides,
       padding='VALID',
+      kernel_dilation=(_d, _d),
       feature_group_count=groups,
-      bias=False,
-      name=name)
+      use_bias=False,
+      name=name)(
+          x)
 
 
 class BasicBlock(nn.Module):
-  expansion = 1
+  features: int
+  norm: Any = None
+  strides: (int, int) = (1, 1)
+  downsample: bool = False
+  groups: int = 1
+  base_width: int = 64
+  dilation: int = 1
+  dtype: Any = jnp.float32
 
-  def apply(self,
-            x,
-            features,
-            strides=(1, 1),
-            downsample=False,
-            groups=1,
-            base_width=64,
-            norm=None,
-            train=False,
-            dtype=jnp.float32):
-    if norm is None:
-      norm = nn.BatchNorm.partial(
-          use_running_average=not train, momentum=0.9, epsilon=1e-5, dtype=dtype)
-    identity = x
+  @nn.compact
+  def __call__(self, inputs):
+    if self.groups != 1 or self.base_width != 64:
+      raise ValueError('BasicBlock only supports groups=1 and base_width=64')
+    if self.dilation > 1:
+      raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
 
-    out = conv3x3(x, features, strides=strides, name='conv1')
-    out = norm(out, name='bn1')
-    out = nn.relu(out)
+    identity = inputs
 
-    out = conv3x3(out, features, name='conv2')
-    out = norm(out, name='bn2')
+    x = dilated_conv3x3(inputs, self.features, strides=self.strides, name='conv1')
+    x = self.norm(name='bn1')(x)
+    x = nn.relu(x)
 
-    if downsample:
-      identity = conv1x1(identity, features, strides=strides, name='downsample_conv')
-      identity = norm(identity, name='downsample_bn')
+    x = dilated_conv3x3(x, self.features, name='conv2')
+    x = self.norm(name='bn2')(x)
 
-    out += identity
-    out = nn.relu(out)
+    if self.downsample:
+      identity = conv1x1(self.features, strides=self.strides, name='downsample_conv')(identity)
+      identity = self.norm(name='downsample_bn')(identity)
 
-    return out
-
-
-class Bottleneck(nn.Module):
-  expansion = 4
-
-  def apply(self,
-            x,
-            features,
-            strides=(1, 1),
-            downsample=False,
-            groups=1,
-            base_width=64,
-            norm=None,
-            train=False,
-            dtype=jnp.float32):
-    if norm is None:
-      norm = nn.BatchNorm.partial(
-          use_running_average=not train, momentum=0.9, epsilon=1e-5, dtype=dtype)
-    width = int(features * (base_width / 64.)) * groups
-    identity = x
-
-    out = conv1x1(x, width, name='conv1')
-    out = norm(out, name='bn1')
-    out = nn.relu(out)
-
-    out = conv3x3(out, width, strides=strides, groups=groups, name='conv2')
-    out = norm(out, name='bn2')
-    out = nn.relu(out)
-
-    out = conv1x1(out, features * 4, name='conv3')
-    out = norm(out, name='bn3')
-
-    if downsample:
-      identity = conv1x1(identity, features * 4, strides=strides, name='downsample_conv')
-      identity = norm(identity, name='downsample_bn')
-
-    out += identity
-    out = nn.relu(out)
-
-    return out
-
-
-class Layer(nn.Module):
-
-  def apply(self, x, block, block_size, **kwargs):
-    x = block(x, **kwargs, name='block1')
-
-    kwargs['strides'] = (1, 1)
-    kwargs['downsample'] = False
-
-    for i in range(1, block_size):
-      x = block(x, **kwargs, name=f'block{i+1}')
+    x += identity
+    x = nn.relu(x)
 
     return x
 
 
-class ResNet(nn.Module):
+class Bottleneck(nn.Module):
+  features: int
+  norm: ModuleDef
+  strides: (int, int) = (1, 1)
+  downsample: bool = False
+  groups: int = 1
+  dilation: int = 1
+  base_width: int = 64
+  dtype: Any = jnp.float32
 
-  def apply(self,
-            x,
-            block,
-            layers,
-            num_classes=1000,
-            groups=1,
-            width_per_group=64,
-            train=False,
-            dtype=jnp.float32):
-    norm = nn.BatchNorm.partial(
-        use_running_average=not train, momentum=0.9, epsilon=1e-5, dtype=dtype)
+  @nn.compact
+  def __call__(self, inputs):
+    width = int(self.features * (self.base_width / 64.)) * self.groups
+    identity = inputs
 
-    x = nn.Conv(
-        x, 64, (7, 7), (2, 2), padding=[(3, 3), (3, 3)], bias=False, dtype=dtype, name='conv1')
-    x = norm(x, name='bn1')
+    x = conv1x1(width, name='conv1')(inputs)
+    x = self.norm(name='bn1')(x)
     x = nn.relu(x)
-    x = utils.max_pool(x, (3, 3), strides=(2, 2), padding=[(1, 1), (1, 1)])
 
-    for i, block_size in enumerate(layers):
+    x = dilated_conv3x3(x, width, strides=self.strides, groups=self.groups, dilation=self.dilation, name='conv2')
+    x = self.norm(name='bn2')(x)
+    x = nn.relu(x)
+
+    x = conv1x1(self.features * 4, name='conv3')(x)
+    x = self.norm(name='bn3')(x)
+
+    if self.downsample:
+      identity = conv1x1(self.features * 4, strides=self.strides, name='downsample_conv')(identity)
+      identity = self.norm(name='downsample_bn')(identity)
+
+    x += identity
+    x = nn.relu(x)
+
+    return x
+
+
+class Layer(nn.Module):
+  block: ModuleDef
+  block_size: Sequence[int]
+  dilation: int
+  kwargs: Dict
+
+  @nn.compact
+  def __call__(self, x):
+    x = self.block(**self.kwargs, name='block1')(x)
+
+    self.kwargs['strides'] = (1, 1)
+    self.kwargs['downsample'] = False
+    self.kwargs['dilation'] = self.dilation
+    for i in range(1, self.block_size):
+      x = self.block(**self.kwargs, name=f'block{i+1}')(x)
+    return x
+
+
+class Backbone(nn.Module):
+  block: ModuleDef
+  layers: Sequence[int]
+  num_classes: int = 1000
+  groups: int = 1
+  width_per_group: int = 64
+  use_dilation: Optional[Sequence[bool]] = None
+  dtype: Any = jnp.float32
+
+  @nn.compact
+  def __call__(self, inputs, train: bool = False):
+    norm = functools.partial(nn.BatchNorm, use_running_average=not train, momentum=0.9, epsilon=1e-5, dtype=self.dtype)
+
+    # replace 2x2 strides with dilated convs
+    if self.use_dilation is None:
+      self.use_dilation = [False, False, False]
+
+    if len(self.use_dilation) != 3:
+      raise ValueError("use_dilation should be None " "or a 3-element tuple, got {}".format(self.use_dilation))
+
+    x = nn.Conv(64, (7, 7), (2, 2), padding=[(3, 3), (3, 3)], use_bias=False, dtype=self.dtype, name='conv1')(inputs)
+    x = norm(name='bn1')(x)
+    x = nn.relu(x)
+    x = nn.max_pool(x, (3, 3), strides=(2, 2), padding=[(1, 1), (1, 1)])
+
+    dilation = 1
+    for i, block_size in enumerate(self.layers):
       features = 64 * 2**i
       downsample = False
+      previous_dilation = dilation
       strides = (2, 2) if i > 0 else (1, 1)
 
-      if strides != (1, 1) or x.shape[-1] != features * block.expansion:
+      if i > 0 and self.use_dilation[i - 1]:
+        dilation *= strides[0]
+        strides = (1, 1)
+
+      block_expansion = 4 if "Bottleneck" in self.block.__name__ else 1
+
+      if strides != (1, 1) or x.shape[-1] != features * block_expansion:
         downsample = True
 
       kwargs = {
           'features': features,
           'strides': strides,
           'downsample': downsample,
-          'groups': groups,
-          'base_width': width_per_group,
+          'groups': self.groups,
+          'dilation': previous_dilation,
+          'base_width': self.width_per_group,
           'norm': norm,
-          'dtype': dtype,
+          'dtype': self.dtype,
       }
 
-      x = Layer(x, block, block_size, **kwargs, name=f'layer{i+1}')
-
-    x = x.transpose((0, 3, 1, 2))
-    x = jnp.mean(x, axis=(2, 3))
-    x = nn.Dense(x, num_classes, dtype=dtype, name='fc')
+      x = Layer(self.block, block_size, dilation, kwargs, name=f'layer{i+1}')(x)
 
     return x
+
+
+class ResNet(nn.Module):
+  block: ModuleDef
+  layers: Sequence[int]
+  num_classes: int = 1000
+  groups: int = 1
+  width_per_group: int = 64
+  use_dilation: Optional[Sequence[bool]] = None
+  dtype: Any = jnp.float32
+
+  @staticmethod
+  def make_backbone(self):
+    return Backbone(self.block, self.layers, self.num_classes, self.groups, self.width_per_group, self.use_dilation,
+                    self.dtype)
+
+  def setup(self):
+    self.backbone = ResNet.make_backbone(self)
+    self.classifier = nn.Dense(self.num_classes, dtype=self.dtype)
+
+  def __call__(self, inputs, train: bool = False):
+    x = self.backbone(inputs, train)
+    x = x.transpose((0, 3, 1, 2))
+    x = jnp.mean(x, axis=(2, 3))
+    x = self.classifier(x)
+
+    return x
+
+
+def _resnet(rng, arch, block, layers, pretrained, **kwargs):
+  resnet = ResNet(block=block, layers=layers, **kwargs)
+
+  if pretrained:
+    torch_params = utils.load_torch_params(model_urls[arch])
+    flax_params = FrozenDict(utils.torch_to_linen(torch_params, _get_flax_keys))
+  else:
+    init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
+    flax_params = ResNet(block=block, layers=layers, **kwargs).init(rng, init_batch)
+
+  return resnet, flax_params
 
 
 def _get_flax_keys(keys):
@@ -186,25 +247,16 @@ def _get_flax_keys(keys):
     param = 'scale' if 'bn' in layer else 'kernel'
   if 'running' in param:
     param = 'mean' if 'mean' in param else 'var'
+  if layer == 'fc':
+    layer = 'classifier'
 
   if layerblock:
-    return [layerblock, f'block{int(block_idx)+1}', layer, param]
+    return ['backbone', layerblock, f'block{int(block_idx)+1}', layer, param]
+
+  if 'classifier' != layer:
+    return ['backbone', layer, param]
 
   return [layer, param]
-
-
-def _resnet(rng, arch, block, layers, pretrained, **kwargs):
-  model = ResNet.partial(block=block, layers=layers, **kwargs)
-
-  if pretrained:
-    torch_params = utils.load_torch_params(model_urls[arch])
-    params, state = utils.torch_to_flax(torch_params, _get_flax_keys)
-  else:
-    with nn.stateful() as state:
-      _, params = model.init_by_shape(rng, [(1, 224, 224, 3)])
-    state = state.as_dict()
-
-  return nn.Model(model, params), state
 
 
 def resnet18(rng, pretrained=True, **kwargs):
@@ -242,6 +294,11 @@ def resnext101_32x8d(rng, pretrained=True, **kwargs):
 def wide_resnet50_2(rng, pretrained=True, **kwargs):
   kwargs['width_per_group'] = 64 * 2
   return _resnet(rng, 'wide_resnet50_2', Bottleneck, [3, 4, 6, 3], pretrained, **kwargs)
+
+
+def wide_resnet101_2(rng, pretrained=True, **kwargs):
+  kwargs['width_per_group'] = 64 * 2
+  return _resnet(rng, 'wide_resnet101_2', Bottleneck, [3, 4, 23, 3], pretrained, **kwargs)
 
 
 def wide_resnet101_2(rng, pretrained=True, **kwargs):

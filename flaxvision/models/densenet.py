@@ -1,7 +1,12 @@
-from flax import nn
+from typing import Optional, Sequence, Tuple, Any
+from functools import partial
+from flax import linen as nn
+from flax.core import FrozenDict
 import jax.numpy as jnp
 import numpy as np
 from .. import utils
+
+ModuleDef = Any
 
 model_urls = {
     'densenet121': 'https://download.pytorch.org/models/densenet121-a639ec97.pth',
@@ -12,78 +17,82 @@ model_urls = {
 
 
 class DenseLayer(nn.Module):
+  growth_rate: int
+  bn_size: int
+  drop_rate: int
 
-  def apply(self, x, growth_rate, bn_size, drop_rate, train=False):
+  @nn.compact
+  def __call__(self, x, train: bool = False):
     x = jnp.concatenate(x, 3)
 
-    x = nn.BatchNorm(x, use_running_average=not train, name='norm1')
+    x = nn.BatchNorm(use_running_average=not train, name='norm1')(x)
     x = nn.relu(x)
-    x = nn.Conv(x, bn_size * growth_rate, (1, 1), (1, 1), padding='VALID', bias=False, name='conv1')
-
-    x = nn.BatchNorm(x, use_running_average=not train, name='norm2')
+    x = nn.Conv(self.bn_size * self.growth_rate, (1, 1), (1, 1), padding='VALID', use_bias=False, name='conv1')(x)
+    x = nn.BatchNorm(use_running_average=not train, name='norm2')(x)
     x = nn.relu(x)
-    x = nn.Conv(x, growth_rate, (3, 3), (1, 1), padding='SAME', bias=False, name='conv2')
+    x = nn.Conv(self.growth_rate, (3, 3), (1, 1), padding='SAME', use_bias=False, name='conv2')(x)
 
-    if drop_rate:
-      x = nn.dropout(x, rate=drop_rate, deterministic=not train)
+    if self.drop_rate:
+      x = nn.Dropout(rate=self.drop_rate)(x, deterministic=not train)
 
     return x
 
 
 class DenseBlock(nn.Module):
+  num_layers: int
+  bn_size: int
+  growth_rate: int
+  drop_rate: int
 
-  def apply(self, x, num_layers, bn_size, growth_rate, drop_rate, train=False):
-    features = [x]
-    for i in range(num_layers):
-      new_features = DenseLayer(
-          features,
-          growth_rate=growth_rate,
-          bn_size=bn_size,
-          drop_rate=drop_rate,
-          name=f'denselayer{i+1}')
-      features.append(new_features)
-    return jnp.concatenate(features, 3)
+  @nn.compact
+  def __call__(self, x, train: bool = False):
+    backbone = [x]
+    for i in range(self.num_layers):
+      backbone.append(
+          DenseLayer(self.growth_rate, self.bn_size, self.drop_rate, name=f'denselayer{i+1}')(backbone, train))
+    return jnp.concatenate(backbone, 3)
 
 
 class Transition(nn.Module):
+  output_features: int
 
-  def apply(self, x, num_output_features, train=False):
-    x = nn.BatchNorm(x, use_running_average=not train, name='norm')
+  @nn.compact
+  def __call__(self, x, train: bool = False):
+    x = nn.BatchNorm(use_running_average=not train, name='norm')(x)
     x = nn.relu(x)
-    x = nn.Conv(x, num_output_features, (1, 1), (1, 1), padding='VALID', bias=False, name='conv')
+    x = nn.Conv(self.output_features, (1, 1), (1, 1), padding='VALID', use_bias=False, name='conv')(x)
     x = nn.avg_pool(x, (2, 2), (2, 2))
     return x
 
 
-class Features(nn.Module):
+class Backbone(nn.Module):
+  growth_rate: int = 32
+  block_config: Tuple[int, int, int, int] = (6, 12, 24, 16)
+  num_init_features: int = 64
+  bn_size: int = 4
+  drop_rate: int = 0
+  dtype: Any = jnp.float32
 
-  def apply(self,
-            x,
-            growth_rate=32,
-            block_config=(6, 12, 24, 16),
-            num_init_features=64,
-            bn_size=4,
-            drop_rate=0,
-            train=False):
+  @nn.compact
+  def __call__(self, x, train: bool = False):
     # initblock
-    x = nn.Conv(
-        x, num_init_features, (7, 7), (2, 2), padding=[(3, 3), (3, 3)], bias=False, name='conv0')
-    x = nn.BatchNorm(x, use_running_average=not train, name='norm0')
+    x = nn.Conv(self.num_init_features, (7, 7), (2, 2), padding=[(3, 3), (3, 3)], use_bias=False, name='conv0')(x)
+    x = nn.BatchNorm(use_running_average=not train, name='norm0')(x)
     x = nn.relu(x)
-    x = utils.max_pool(x, (3, 3), (2, 2), padding=[(1, 1), (1, 1)])
+    x = nn.max_pool(x, (3, 3), (2, 2), padding=[(1, 1), (1, 1)])
 
     # denseblocks
-    num_features = num_init_features
-    for i, num_layers in enumerate(block_config):
-      x = DenseBlock(x, num_layers, bn_size, growth_rate, drop_rate, name=f'denseblock{i+1}')
-      num_features += num_layers * growth_rate
+    num_features = self.num_init_features
+    for i, num_layers in enumerate(self.block_config):
+      x = DenseBlock(num_layers, self.bn_size, self.growth_rate, self.drop_rate, name=f'denseblock{i+1}')(x, train)
+      num_features += num_layers * self.growth_rate
 
-      if i != len(block_config) - 1:
+      if i != len(self.block_config) - 1:
         num_features = num_features // 2
-        x = Transition(x, num_features, name=f'transition{i+1}')
+        x = Transition(num_features, name=f'transition{i+1}')(x, train)
 
     # finalblock
-    x = nn.BatchNorm(x, use_running_average=not train, name='norm5')
+    x = nn.BatchNorm(use_running_average=not train, name='norm5')(x)
 
     x = nn.relu(x)
     x = nn.avg_pool(x, (7, 7))
@@ -92,54 +101,58 @@ class Features(nn.Module):
 
 
 class DenseNet(nn.Module):
+  growth_rate: int = 32
+  block_config: Tuple[int, int, int, int] = (6, 12, 24, 16)
+  num_init_features: int = 64
+  bn_size: int = 4
+  drop_rate: int = 0
+  num_classes: int = 1000
+  dtype: Any = jnp.float32
 
-  def apply(self,
-            x,
-            growth_rate=32,
-            block_config=(6, 12, 24, 16),
-            num_init_features=64,
-            bn_size=4,
-            drop_rate=0,
-            num_classes=1000,
-            train=False):
-    x = Features(
-        x, growth_rate, block_config, num_init_features, bn_size, drop_rate, train, name='features')
+  @staticmethod
+  def make_backbone(self):
+    return Backbone(self.growth_rate, self.block_config, self.num_init_features, self.bn_size, self.drop_rate,
+                    self.dtype)
+
+  def setup(self):
+    self.backbone = DenseNet.make_backbone(self)
+    self.classifier = nn.Dense(self.num_classes, dtype=self.dtype)
+
+  def __call__(self, x, train: bool = False):
+    x = self.backbone(x, train)
     x = x.transpose((0, 3, 1, 2))
     x = x.reshape((x.shape[0], -1))
-    x = nn.Dense(x, num_classes, name='classifier')
+    x = self.classifier(x)
+
     return x
 
 
 def _get_flax_keys(keys):
+  if keys[0] == 'features':
+    keys[0] = 'backbone'
   if keys[-1] == 'weight':
     is_scale = 'norm' in keys[-2] if len(keys) < 6 else 'norm' in keys[-3]
     keys[-1] = 'scale' if is_scale else 'kernel'
   if 'running' in keys[-1]:
     keys[-1] = 'mean' if 'mean' in keys[-1] else 'var'
-
-  # if index separated from layer, concatenate
-  if keys[-2] in ('1', '2'):
+  if keys[-2] in ('1', '2'):  # if index separated from layer name, concatenate
     keys = keys[:3] + [keys[3] + keys[4]] + [keys[5]]
-
   return keys
 
 
 def _densenet(rng, arch, growth_rate, block_config, num_init_features, pretrained, **kwargs):
-  model = DenseNet.partial(
-      growth_rate=growth_rate,
-      block_config=block_config,
-      num_init_features=num_init_features,
-      **kwargs)
+  densenet = DenseNet(growth_rate=growth_rate, block_config=block_config, num_init_features=num_init_features, **kwargs)
 
   if pretrained:
     torch_params = utils.load_torch_params(model_urls[arch])
-    params, state = utils.torch_to_flax(torch_params, _get_flax_keys)
+    flax_params = FrozenDict(utils.torch_to_linen(torch_params, _get_flax_keys))
   else:
-    with nn.stateful() as state:
-      _, params = model.init(rng, jnp.ones((1, 224, 224, 3)))
-    state = state.as_dict()
+    init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
+    flax_params = DenseNet(
+        growth_rate=growth_rate, block_config=block_config, num_init_features=num_init_features,
+        **kwargs).init(rng, init_batch)
 
-  return nn.Model(model, params), state
+  return densenet, flax_params
 
 
 def densenet121(rng, pretrained=True, **kwargs):

@@ -1,7 +1,14 @@
-from flax import nn
+from typing import Any, Sequence, Optional, Tuple, Union
+from functools import partial
+
+from flax import linen as nn
+from flax.core import FrozenDict
 import jax.numpy as jnp
 import numpy as np
+
 from .. import utils
+
+ModuleDef = Any
 
 model_urls = {
     'inception_v3': 'https://download.pytorch.org/models/inception_v3_google-1a9a5a14.pth',
@@ -9,47 +16,66 @@ model_urls = {
 
 
 class BasicConv(nn.Module):
+  out_channels: int
+  kernel_size: Tuple[int, int]
+  strides: Optional[Sequence[int]] = None
+  padding: Union[str, Sequence[Tuple[int, int]]] = 'VALID'
+  train: bool = False
+  dtype: Any = jnp.float32
 
-  def apply(self, x, out_channels, train=False, dtype=jnp.float32, **kwargs):
-    if 'padding' not in kwargs:
-      kwargs['padding'] = 'VALID'
-    x = nn.Conv(x, out_channels, bias=False, **kwargs, name='conv', dtype=dtype)
-    x = nn.BatchNorm(x, use_running_average=not train, epsilon=0.001, name='bn', dtype=dtype)
+  @nn.compact
+  def __call__(self, x):
+    x = nn.Conv(
+        self.out_channels,
+        kernel_size=self.kernel_size,
+        strides=self.strides,
+        padding=self.padding,
+        use_bias=False,
+        name='conv',
+        dtype=self.dtype)(
+            x)
+    x = nn.BatchNorm(use_running_average=not self.train, epsilon=0.001, name='bn', dtype=self.dtype)(x)
     return nn.relu(x)
 
 
 class InceptionA(nn.Module):
+  pool_features: int
+  conv_block: ModuleDef
 
-  def apply(self, x, pool_features, conv_block):
-    branch1x1 = conv_block(x, 64, kernel_size=(1, 1), name='branch1x1')
+  @nn.compact
+  def __call__(self, x):
+    branch1x1 = self.conv_block(64, kernel_size=(1, 1), name='branch1x1')(x)
 
-    branch5x5 = conv_block(x, 48, kernel_size=(1, 1), name='branch5x5_1')
-    branch5x5 = conv_block(
-        branch5x5, 64, kernel_size=(5, 5), padding=[(2, 2), (2, 2)], name='branch5x5_2')
+    branch5x5 = self.conv_block(48, kernel_size=(1, 1), name='branch5x5_1')(x)
+    branch5x5 = self.conv_block(64, kernel_size=(5, 5), padding=[(2, 2), (2, 2)], name='branch5x5_2')(branch5x5)
 
-    branch3x3dbl = conv_block(x, 64, kernel_size=(1, 1), name='branch3x3dbl_1')
-    branch3x3dbl = conv_block(
-        branch3x3dbl, 96, kernel_size=(3, 3), padding=[(1, 1), (1, 1)], name='branch3x3dbl_2')
-    branch3x3dbl = conv_block(
-        branch3x3dbl, 96, kernel_size=(3, 3), padding=[(1, 1), (1, 1)], name='branch3x3dbl_3')
+    branch3x3dbl = self.conv_block(64, kernel_size=(1, 1), name='branch3x3dbl_1')(x)
+    branch3x3dbl = self.conv_block(
+        96, kernel_size=(3, 3), padding=[(1, 1), (1, 1)], name='branch3x3dbl_2')(
+            branch3x3dbl)
+    branch3x3dbl = self.conv_block(
+        96, kernel_size=(3, 3), padding=[(1, 1), (1, 1)], name='branch3x3dbl_3')(
+            branch3x3dbl)
 
-    branch_pool = utils.avg_pool(x, (3, 3), strides=(1, 1), padding=[(1, 1), (1, 1)])
-    branch_pool = conv_block(branch_pool, pool_features, kernel_size=(1, 1), name='branch_pool')
+    branch_pool = nn.avg_pool(x, (3, 3), strides=(1, 1), padding=[(1, 1), (1, 1)])
+    branch_pool = self.conv_block(self.pool_features, kernel_size=(1, 1), name='branch_pool')(branch_pool)
 
     outputs = [branch1x1, branch5x5, branch3x3dbl, branch_pool]
     return jnp.concatenate(outputs, 3)
 
 
 class InceptionB(nn.Module):
+  conv_block: ModuleDef
 
-  def apply(self, x, conv_block):
-    branch3x3 = conv_block(x, 384, kernel_size=(3, 3), strides=(2, 2), name='branch3x3')
+  @nn.compact
+  def __call__(self, x):
+    branch3x3 = self.conv_block(384, kernel_size=(3, 3), strides=(2, 2), name='branch3x3')(x)
 
-    branch3x3dbl = conv_block(x, 64, kernel_size=(1, 1), name='branch3x3dbl_1')
-    branch3x3dbl = conv_block(
-        branch3x3dbl, 96, kernel_size=(3, 3), padding=[(1, 1), (1, 1)], name='branch3x3dbl_2')
-    branch3x3dbl = conv_block(
-        branch3x3dbl, 96, kernel_size=(3, 3), strides=(2, 2), name='branch3x3dbl_3')
+    branch3x3dbl = self.conv_block(64, kernel_size=(1, 1), name='branch3x3dbl_1')(x)
+    branch3x3dbl = self.conv_block(
+        96, kernel_size=(3, 3), padding=[(1, 1), (1, 1)], name='branch3x3dbl_2')(
+            branch3x3dbl)
+    branch3x3dbl = self.conv_block(96, kernel_size=(3, 3), strides=(2, 2), name='branch3x3dbl_3')(branch3x3dbl)
 
     branch_pool = nn.max_pool(x, (3, 3), strides=(2, 2))
 
@@ -58,47 +84,51 @@ class InceptionB(nn.Module):
 
 
 class InceptionC(nn.Module):
+  channels_7x7: int
+  conv_block: ModuleDef
 
-  def apply(self, x, channels_7x7, conv_block):
-    branch1x1 = conv_block(x, 192, kernel_size=(1, 1), name='branch1x1')
+  @nn.compact
+  def __call__(self, x):
+    branch1x1 = self.conv_block(192, kernel_size=(1, 1), name='branch1x1')(x)
 
-    c7 = channels_7x7
-    branch7x7 = conv_block(x, c7, kernel_size=(1, 1), name='branch7x7_1')
-    branch7x7 = conv_block(
-        branch7x7, c7, kernel_size=(1, 7), padding=[(0, 0), (3, 3)], name='branch7x7_2')
-    branch7x7 = conv_block(
-        branch7x7, 192, kernel_size=(7, 1), padding=[(3, 3), (0, 0)], name='branch7x7_3')
+    c7 = self.channels_7x7
+    branch7x7 = self.conv_block(c7, kernel_size=(1, 1), name='branch7x7_1')(x)
+    branch7x7 = self.conv_block(c7, kernel_size=(1, 7), padding=[(0, 0), (3, 3)], name='branch7x7_2')(branch7x7)
+    branch7x7 = self.conv_block(192, kernel_size=(7, 1), padding=[(3, 3), (0, 0)], name='branch7x7_3')(branch7x7)
 
-    branch7x7dbl = conv_block(x, c7, kernel_size=(1, 1), name='branch7x7dbl_1')
-    branch7x7dbl = conv_block(
-        branch7x7dbl, c7, kernel_size=(7, 1), padding=[(3, 3), (0, 0)], name='branch7x7dbl_2')
-    branch7x7dbl = conv_block(
-        branch7x7dbl, c7, kernel_size=(1, 7), padding=[(0, 0), (3, 3)], name='branch7x7dbl_3')
-    branch7x7dbl = conv_block(
-        branch7x7dbl, c7, kernel_size=(7, 1), padding=[(3, 3), (0, 0)], name='branch7x7dbl_4')
-    branch7x7dbl = conv_block(
-        branch7x7dbl, 192, kernel_size=(1, 7), padding=[(0, 0), (3, 3)], name='branch7x7dbl_5')
+    branch7x7dbl = self.conv_block(c7, kernel_size=(1, 1), name='branch7x7dbl_1')(x)
+    branch7x7dbl = self.conv_block(
+        c7, kernel_size=(7, 1), padding=[(3, 3), (0, 0)], name='branch7x7dbl_2')(
+            branch7x7dbl)
+    branch7x7dbl = self.conv_block(
+        c7, kernel_size=(1, 7), padding=[(0, 0), (3, 3)], name='branch7x7dbl_3')(
+            branch7x7dbl)
+    branch7x7dbl = self.conv_block(
+        c7, kernel_size=(7, 1), padding=[(3, 3), (0, 0)], name='branch7x7dbl_4')(
+            branch7x7dbl)
+    branch7x7dbl = self.conv_block(
+        192, kernel_size=(1, 7), padding=[(0, 0), (3, 3)], name='branch7x7dbl_5')(
+            branch7x7dbl)
 
-    branch_pool = utils.avg_pool(x, (3, 3), strides=(1, 1), padding=[(1, 1), (1, 1)])
-    branch_pool = conv_block(branch_pool, 192, kernel_size=(1, 1), name='branch_pool')
+    branch_pool = nn.avg_pool(x, (3, 3), strides=(1, 1), padding=[(1, 1), (1, 1)])
+    branch_pool = self.conv_block(192, kernel_size=(1, 1), name='branch_pool')(branch_pool)
 
     outputs = [branch1x1, branch7x7, branch7x7dbl, branch_pool]
     return jnp.concatenate(outputs, 3)
 
 
 class InceptionD(nn.Module):
+  conv_block: ModuleDef
 
-  def apply(self, x, conv_block):
-    branch3x3 = conv_block(x, 192, kernel_size=(1, 1), name='branch3x3_1')
-    branch3x3 = conv_block(branch3x3, 320, kernel_size=(3, 3), strides=(2, 2), name='branch3x3_2')
+  @nn.compact
+  def __call__(self, x):
+    branch3x3 = self.conv_block(192, kernel_size=(1, 1), name='branch3x3_1')(x)
+    branch3x3 = self.conv_block(320, kernel_size=(3, 3), strides=(2, 2), name='branch3x3_2')(branch3x3)
 
-    branch7x7x3 = conv_block(x, 192, kernel_size=(1, 1), name='branch7x7x3_1')
-    branch7x7x3 = conv_block(
-        branch7x7x3, 192, kernel_size=(1, 7), padding=[(0, 0), (3, 3)], name='branch7x7x3_2')
-    branch7x7x3 = conv_block(
-        branch7x7x3, 192, kernel_size=(7, 1), padding=[(3, 3), (0, 0)], name='branch7x7x3_3')
-    branch7x7x3 = conv_block(
-        branch7x7x3, 192, kernel_size=(3, 3), strides=(2, 2), name='branch7x7x3_4')
+    branch7x7x3 = self.conv_block(192, kernel_size=(1, 1), name='branch7x7x3_1')(x)
+    branch7x7x3 = self.conv_block(192, kernel_size=(1, 7), padding=[(0, 0), (3, 3)], name='branch7x7x3_2')(branch7x7x3)
+    branch7x7x3 = self.conv_block(192, kernel_size=(7, 1), padding=[(3, 3), (0, 0)], name='branch7x7x3_3')(branch7x7x3)
+    branch7x7x3 = self.conv_block(192, kernel_size=(3, 3), strides=(2, 2), name='branch7x7x3_4')(branch7x7x3)
 
     branch_pool = nn.max_pool(x, (3, 3), strides=(2, 2))
 
@@ -107,67 +137,70 @@ class InceptionD(nn.Module):
 
 
 class InceptionE(nn.Module):
+  conv_block: ModuleDef
 
-  def apply(self, x, conv_block):
-    branch1x1 = conv_block(x, 320, kernel_size=(1, 1), name='branch1x1')
+  @nn.compact
+  def __call__(self, x):
+    branch1x1 = self.conv_block(320, kernel_size=(1, 1), name='branch1x1')(x)
 
-    branch3x3 = conv_block(x, 384, kernel_size=(1, 1), name='branch3x3_1')
-    branch3x3_2a = conv_block(
-        branch3x3, 384, kernel_size=(1, 3), padding=[(0, 0), (1, 1)], name='branch3x3_2a')
-    branch3x3_2b = conv_block(
-        branch3x3, 384, kernel_size=(3, 1), padding=[(1, 1), (0, 0)], name='branch3x3_2b')
+    branch3x3 = self.conv_block(384, kernel_size=(1, 1), name='branch3x3_1')(x)
+    branch3x3_2a = self.conv_block(384, kernel_size=(1, 3), padding=[(0, 0), (1, 1)], name='branch3x3_2a')(branch3x3)
+    branch3x3_2b = self.conv_block(384, kernel_size=(3, 1), padding=[(1, 1), (0, 0)], name='branch3x3_2b')(branch3x3)
     branch3x3 = jnp.concatenate([branch3x3_2a, branch3x3_2b], 3)
 
-    branch3x3dbl = conv_block(x, 448, kernel_size=(1, 1), name='branch3x3dbl_1')
-    branch3x3dbl = conv_block(
-        branch3x3dbl, 384, kernel_size=(3, 3), padding=[(1, 1), (1, 1)], name='branch3x3dbl_2')
-    branch3x3dbl_3a = conv_block(
-        branch3x3dbl, 384, kernel_size=(1, 3), padding=[(0, 0), (1, 1)], name='branch3x3dbl_3a')
-    branch3x3dbl_3b = conv_block(
-        branch3x3dbl, 384, kernel_size=(3, 1), padding=[(1, 1), (0, 0)], name='branch3x3dbl_3b')
+    branch3x3dbl = self.conv_block(448, kernel_size=(1, 1), name='branch3x3dbl_1')(x)
+    branch3x3dbl = self.conv_block(
+        384, kernel_size=(3, 3), padding=[(1, 1), (1, 1)], name='branch3x3dbl_2')(
+            branch3x3dbl)
+    branch3x3dbl_3a = self.conv_block(
+        384, kernel_size=(1, 3), padding=[(0, 0), (1, 1)], name='branch3x3dbl_3a')(
+            branch3x3dbl)
+    branch3x3dbl_3b = self.conv_block(
+        384, kernel_size=(3, 1), padding=[(1, 1), (0, 0)], name='branch3x3dbl_3b')(
+            branch3x3dbl)
     branch3x3dbl = jnp.concatenate([branch3x3dbl_3a, branch3x3dbl_3b], 3)
 
-    branch_pool = utils.avg_pool(x, (3, 3), strides=(1, 1), padding=[(1, 1), (1, 1)])
-    branch_pool = conv_block(branch_pool, 192, kernel_size=(1, 1), name='branch_pool')
+    branch_pool = nn.avg_pool(x, (3, 3), strides=(1, 1), padding=[(1, 1), (1, 1)])
+    branch_pool = self.conv_block(192, kernel_size=(1, 1), name='branch_pool')(branch_pool)
 
     outputs = [branch1x1, branch3x3, branch3x3dbl, branch_pool]
     return jnp.concatenate(outputs, 3)
 
 
 class InceptionAux(nn.Module):
+  num_classes: int
+  conv_block: ModuleDef
 
-  def apply(self, x, num_classes, conv_block):
+  @nn.compact
+  def __call__(self, x):
     x = nn.avg_pool(x, (5, 5), strides=(3, 3))
-    x = conv_block(x, 128, kernel_size=(1, 1), name='conv0')
-    x = conv_block(x, 768, kernel_size=(5, 5), name='conv1')
+    x = self.conv_block(128, kernel_size=(1, 1), name='conv0')(x)
+    x = self.conv_block(768, kernel_size=(5, 5), name='conv1')(x)
 
     x = x.transpose((0, 3, 1, 2))
     x = x.reshape((x.shape[0], -1))
-    x = nn.Dense(x, num_classes, name='fc')
-    
+    x = nn.Dense(self.num_classes, name='fc')(x)
+
     return x
 
 
-class Inception(nn.Module):
+class Backbone(nn.Module):
+  num_classes: int = 1000
+  aux_logits: bool = True
+  transform_input: bool = True
+  dtype: Any = jnp.float32
 
-  def apply(self,
-            x,
-            rng,
-            num_classes=1000,
-            aux_logits=True,
-            train=False,
-            transform_input=True,
-            inception_blocks=None,
-            dtype=jnp.float32):
-    conv_block = BasicConv.partial(train=train, dtype=dtype)
-    inception_a = InceptionA.partial(conv_block=conv_block)
-    inception_b = InceptionB.partial(conv_block=conv_block)
-    inception_c = InceptionC.partial(conv_block=conv_block)
-    inception_d = InceptionD.partial(conv_block=conv_block)
-    inception_e = InceptionE.partial(conv_block=conv_block)
-    inception_aux = InceptionAux.partial(conv_block=conv_block)
+  @nn.compact
+  def __call__(self, x, train=False):
+    conv_block = partial(BasicConv, train=train, dtype=self.dtype)
+    inception_a = partial(InceptionA, conv_block=conv_block)
+    inception_b = partial(InceptionB, conv_block=conv_block)
+    inception_c = partial(InceptionC, conv_block=conv_block)
+    inception_d = partial(InceptionD, conv_block=conv_block)
+    inception_e = partial(InceptionE, conv_block=conv_block)
+    inception_aux = partial(InceptionAux, conv_block=conv_block)
 
-    if transform_input:
+    if self.transform_input:
       x = np.transpose(x, (0, 3, 1, 2))
       x_ch0 = jnp.expand_dims(x[:, 0], 1) * (0.229 / 0.5) + (0.485 - 0.5) / 0.5
       x_ch1 = jnp.expand_dims(x[:, 1], 1) * (0.224 / 0.5) + (0.456 - 0.5) / 0.5
@@ -175,36 +208,56 @@ class Inception(nn.Module):
       x = jnp.concatenate((x_ch0, x_ch1, x_ch2), 1)
       x = np.transpose(x, (0, 2, 3, 1))
 
-    x = conv_block(x, 32, kernel_size=(3, 3), strides=(2, 2), name='Conv2d_1a_3x3')
-    x = conv_block(x, 32, kernel_size=(3, 3), name='Conv2d_2a_3x3')
-    x = conv_block(x, 64, kernel_size=(3, 3), padding=[(1, 1), (1, 1)], name='Conv2d_2b_3x3')
+    x = conv_block(32, kernel_size=(3, 3), strides=(2, 2), name='Conv2d_1a_3x3')(x)
+    x = conv_block(32, kernel_size=(3, 3), name='Conv2d_2a_3x3')(x)
+    x = conv_block(64, kernel_size=(3, 3), padding=[(1, 1), (1, 1)], name='Conv2d_2b_3x3')(x)
     x = nn.max_pool(x, (3, 3), strides=(2, 2))
-    x = conv_block(x, 80, kernel_size=(1, 1), name='Conv2d_3b_1x1')
-    x = conv_block(x, 192, kernel_size=(3, 3), name='Conv2d_4a_3x3')
+    x = conv_block(80, kernel_size=(1, 1), name='Conv2d_3b_1x1')(x)
+    x = conv_block(192, kernel_size=(3, 3), name='Conv2d_4a_3x3')(x)
     x = nn.max_pool(x, (3, 3), strides=(2, 2))
 
-    x = inception_a(x, pool_features=32, name='Mixed_5b')
-    x = inception_a(x, pool_features=64, name='Mixed_5c')
-    x = inception_a(x, pool_features=64, name='Mixed_5d')
-    x = inception_b(x, name='Mixed_6a')
-    x = inception_c(x, channels_7x7=128, name='Mixed_6b')
-    x = inception_c(x, channels_7x7=160, name='Mixed_6c')
-    x = inception_c(x, channels_7x7=160, name='Mixed_6d')
-    x = inception_c(x, channels_7x7=192, name='Mixed_6e')
+    x = inception_a(pool_features=32, name='Mixed_5b')(x)
+    x = inception_a(pool_features=64, name='Mixed_5c')(x)
+    x = inception_a(pool_features=64, name='Mixed_5d')(x)
+    x = inception_b(name='Mixed_6a')(x)
+    x = inception_c(channels_7x7=128, name='Mixed_6b')(x)
+    x = inception_c(channels_7x7=160, name='Mixed_6c')(x)
+    x = inception_c(channels_7x7=160, name='Mixed_6d')(x)
+    x = inception_c(channels_7x7=192, name='Mixed_6e')(x)
 
-    aux = inception_aux(x, num_classes, name='AuxLogits') if train and aux_logits else None
+    aux = inception_aux(self.num_classes, name='AuxLogits')(x) \
+          if train and self.aux_logits else None
 
-    x = inception_d(x, name='Mixed_7a')
-    x = inception_e(x, name='Mixed_7b')
-    x = inception_e(x, name='Mixed_7c')
+    x = inception_d(name='Mixed_7a')(x)
+    x = inception_e(name='Mixed_7b')(x)
+    x = inception_e(name='Mixed_7c')(x)
     x = nn.avg_pool(x, (8, 8))
-    x = nn.dropout(x, 0.5, deterministic=not train, rng=rng)
-
-    x = x.transpose((0, 3, 1, 2))
-    x = x.reshape((x.shape[0], -1))
-    x = nn.Dense(x, num_classes, name='fc')
+    x = nn.Dropout(0.5)(x, deterministic=not train)
 
     return x, aux
+
+
+class Inception(nn.Module):
+  num_classes: int = 1000
+  aux_logits: bool = True
+  transform_input: bool = True
+  dtype: Any = jnp.float32
+
+  @staticmethod
+  def make_backbone(self):
+    return Backbone(self.num_classes, self.aux_logits, self.transform_input, self.dtype)
+
+  def setup(self):
+    self.backbone = Inception.make_backbone(self)
+    self.classifier = nn.Dense(self.num_classes, dtype=self.dtype)
+
+  def __call__(self, inputs, train=False):
+    x, _ = self.backbone(inputs, train)
+    x = x.transpose((0, 3, 1, 2))
+    x = x.reshape((x.shape[0], -1))
+    x = self.classifier(x)
+
+    return x
 
 
 def _get_flax_keys(keys):
@@ -212,18 +265,22 @@ def _get_flax_keys(keys):
     keys[-1] = 'scale' if 'bn' in keys[-2] else 'kernel'
   if 'running' in keys[-1]:
     keys[-1] = 'mean' if 'mean' in keys[-1] else 'var'
-  return keys
+
+  if keys[0] == 'fc':
+    keys[0] = 'classifier'
+    return keys
+
+  return ['backbone'] + keys
 
 
 def inception_v3(rng, pretrained=True, **kwargs):
-  model = Inception.partial(rng=rng, **kwargs)
+  inception = Inception(**kwargs)
 
   if pretrained:
     torch_params = utils.load_torch_params(model_urls['inception_v3'])
-    params, state = utils.torch_to_flax(torch_params, _get_flax_keys)
+    flax_params = FrozenDict(utils.torch_to_linen(torch_params, _get_flax_keys))
   else:
-    with nn.stateful() as state:
-      _, params = model.init_by_shape(rng, [(1, 299, 299, 3)])
-    state = state.as_dict()
+    init_batch = jnp.ones((1, 299, 299, 3), jnp.float32)
+    flax_params = Inception(**kwargs).init(rng, init_batch)
 
-  return nn.Model(model, params), state
+  return inception, flax_params

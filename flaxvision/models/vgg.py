@@ -1,6 +1,10 @@
-from flax import nn
+from typing import Any, Sequence, Union
+
+from flax import linen as nn
+from flax.core import FrozenDict
 import jax.numpy as jnp
 import numpy as np
+
 from .. import utils
 
 model_urls = {
@@ -16,46 +20,66 @@ model_urls = {
 
 
 class Classifier(nn.Module):
+  num_classes: int
+  dtype: Any = jnp.float32
 
-  def apply(self, x, num_classes=1000, train=False, dtype=jnp.float32):
-    x = nn.Dense(x, 4096, dtype=dtype)
+  @nn.compact
+  def __call__(self, inputs, train=False):
+    x = nn.Dense(4096, dtype=self.dtype)(inputs)
     x = nn.relu(x)
-    x = nn.dropout(x, 0.5, deterministic=not train)
-    x = nn.Dense(x, 4096, dtype=dtype)
+    x = nn.Dropout(rate=0.5)(x, deterministic=not train)
+    x = nn.Dense(4096, dtype=self.dtype)(x)
     x = nn.relu(x)
-    x = nn.dropout(x, 0.5, deterministic=not train)
-    x = nn.Dense(x, num_classes, dtype=dtype)
+    x = nn.Dropout(rate=0.5)(x, deterministic=not train)
+    x = nn.Dense(self.num_classes, dtype=self.dtype)(x)
     return x
 
 
-class Features(nn.Module):
+class Backbone(nn.Module):
+  cfg: Union[Sequence[int], Sequence[str]]
+  batch_norm: bool = False
+  dtype: Any = jnp.float32
 
-  def apply(self, x, cfg, batch_norm=False, train=False, dtype=jnp.float32):
-    for v in cfg:
+  @nn.compact
+  def __call__(self, x, train=False):
+    for v in self.cfg:
       if v == 'M':
         x = nn.max_pool(x, (2, 2), (2, 2))
       else:
-        x = nn.Conv(x, v, (3, 3), padding='SAME', dtype=dtype)
-        if batch_norm:
-          x = nn.BatchNorm(x, use_running_average=not train, momentum=0.1, dtype=dtype)
+        x = nn.Conv(v, (3, 3), padding='SAME', dtype=self.dtype)(x)
+        if self.batch_norm:
+          x = nn.BatchNorm(use_running_average=not train, momentum=0.1, dtype=self.dtype)(x)
         x = nn.relu(x)
     return x
 
 
 class VGG(nn.Module):
+  cfg: Union[Sequence[int], Sequence[str]]
+  num_classes: int = 1000
+  batch_norm: bool = False
+  dtype: Any = jnp.float32
 
-  def apply(self, x, rng, cfg, num_classes=1000, batch_norm=False, train=False, dtype=jnp.float32):
-    x = Features(x, cfg, batch_norm, train, dtype, name='features')
+  @staticmethod
+  def make_backbone(self):
+    return Backbone(self.cfg, self.batch_norm, self.dtype)
+
+  def setup(self):
+    self.backbone = VGG.make_backbone(self)
+    self.classifier = Classifier(self.num_classes, self.dtype)
+
+  def __call__(self, inputs, train=False):
+    x = self.backbone(inputs, train)
     x = x.transpose((0, 3, 1, 2))
     x = x.reshape((x.shape[0], -1))
-    x = Classifier(x, 1000, train, name='classifier')
+    x = self.classifier(x, train)
     return x
 
 
-def _torch_to_flax(torch_params, cfg, batch_norm=False):
-  flax_params, flax_state = {}, {}
+def _torch_to_vgg(torch_params, cfg, batch_norm=False):
+  """Convert PyTorch parameters to nested dictionaries."""
+  flax_params = {'params': {'backbone': {}, 'classifier': {}}, 'batch_stats': {'backbone': {}}}
   conv_idx = 0
-  bn_idx = 1
+  bn_idx = 0
 
   tensor_iter = iter(torch_params.items())
 
@@ -63,88 +87,82 @@ def _torch_to_flax(torch_params, cfg, batch_norm=False):
     _, tensor = next(tensor_iter)
     return tensor.detach().numpy()
 
-  flax_params['features'] = {}
   for layer_cfg in cfg:
     if isinstance(layer_cfg, int):
-      flax_params['features'][f'Conv_{conv_idx}'] = {
+      flax_params['params']['backbone'][f'Conv_{conv_idx}'] = {
           'kernel': np.transpose(next_tensor(), (2, 3, 1, 0)),
           'bias': next_tensor(),
       }
-      conv_idx += 2 if batch_norm else 1
+      conv_idx += 1
 
       if batch_norm:
-        flax_params['features'][f'BatchNorm_{bn_idx}'] = {
+        flax_params['params']['backbone'][f'BatchNorm_{bn_idx}'] = {
             'scale': next_tensor(),
             'bias': next_tensor(),
         }
-        flax_state[f'/features/BatchNorm_{bn_idx}'] = {
+        flax_params['batch_stats']['backbone'][f'BatchNorm_{bn_idx}'] = {
             'mean': next_tensor(),
             'var': next_tensor(),
         }
-        bn_idx += 2
+        bn_idx += 1
 
-  flax_params['classifier'] = {}
   for idx in range(3):
-    flax_params['classifier'][f'Dense_{idx}'] = {
+    flax_params['params']['classifier'][f'Dense_{idx}'] = {
         'kernel': np.transpose(next_tensor()),
         'bias': next_tensor(),
     }
 
-  return flax_params, flax_state
+  return FrozenDict(flax_params)
 
 
 cfgs = {
     'A': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
     'B': [64, 64, 'M', 128, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
     'D': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M'],
-    'E': [
-        64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512,
-        512, 'M'
-    ],
+    'E': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M']
 }
 
 
-def _vgg(arch, cfg, rng, batch_norm, pretrained, **kwargs):
-  vgg = VGG.partial(rng=rng, cfg=cfgs[cfg], batch_norm=batch_norm, **kwargs)
+def _vgg(rng, arch, cfg, batch_norm, pretrained, **kwargs):
+  vgg = VGG(cfg=cfgs[cfg], batch_norm=batch_norm, **kwargs)
 
   if pretrained:
     torch_params = utils.load_torch_params(model_urls[arch])
-    params, state = _torch_to_flax(torch_params, cfgs[cfg], batch_norm)
+    flax_params = FrozenDict(_torch_to_vgg(torch_params, cfgs[cfg], batch_norm))
   else:
-    with nn.stateful() as state:
-      _, params = vgg.init_by_shape(rng, [(1, 224, 224, 3)])
-    state = state.as_dict()
+    init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
+    flax_params = VGG(cfg=cfgs[cfg], batch_norm=batch_norm, **kwargs).init(rng, init_batch)
 
-  return nn.Model(vgg, params), state
+  return vgg, flax_params
 
 
 def vgg11(rng, pretrained=True, **kwargs):
-  return _vgg('vgg11', 'A', rng, False, pretrained, **kwargs)
+  return _vgg(rng, 'vgg11', 'A', False, pretrained, **kwargs)
 
 
 def vgg11_bn(rng, pretrained=True, **kwargs):
-  return _vgg('vgg11_bn', 'A', rng, True, pretrained, **kwargs)
+  return _vgg(rng, 'vgg11_bn', 'A', True, pretrained, **kwargs)
 
 
 def vgg13(rng, pretrained=True, **kwargs):
-  return _vgg('vgg13', 'B', rng, False, pretrained, **kwargs)
+  return _vgg(rng, 'vgg13', 'B', False, pretrained, **kwargs)
 
 
 def vgg13_bn(rng, pretrained=True, **kwargs):
-  return _vgg('vgg13_bn', 'B', rng, True, pretrained, **kwargs)
+  return _vgg(rng, 'vgg13_bn', 'B', True, pretrained, **kwargs)
 
 
 def vgg16(rng, pretrained=True, **kwargs):
-  return _vgg('vgg16', 'D', rng, False, pretrained, **kwargs)
+  return _vgg(rng, 'vgg16', 'D', False, pretrained, **kwargs)
 
 
 def vgg16_bn(rng, pretrained=True, **kwargs):
-  return _vgg('vgg16_bn', 'D', rng, True, pretrained, **kwargs)
+  return _vgg(rng, 'vgg16_bn', 'D', True, pretrained, **kwargs)
 
 
 def vgg19(rng, pretrained=True, **kwargs):
-  return _vgg('vgg19', 'E', rng, False, pretrained, **kwargs)
+  return _vgg(rng, 'vgg19', 'E', False, pretrained, **kwargs)
 
 
 def vgg19_bn(rng, pretrained=True, **kwargs):
-  return _vgg('vgg19_bn', 'E', rng, True, pretrained, **kwargs)
+  return _vgg(rng, 'vgg19_bn', 'E', True, pretrained, **kwargs)

@@ -138,7 +138,7 @@ def deeplabv3_keys(keys):
 
     layerblock = 'ASPP'
 
-    # final classifier
+    # projection block
     if block_idx is None:
       if layer == '1':
         layer = 'conv1'

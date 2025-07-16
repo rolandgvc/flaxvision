@@ -1,39 +1,43 @@
-# FlaxVision Project
+# flaxvision
 
-FlaxVision is a JAX/Flax implementation of popular computer vision models, designed to be compatible with PyTorch's torchvision. It provides pre-trained models for classification and segmentation tasks with seamless parameter conversion from PyTorch weights. The project focuses on transfer learning and model compatibility between PyTorch and JAX ecosystems.
+flaxvision is a Python package that provides neural network models ported from PyTorch's torchvision to work with JAX and Flax. It focuses on computer vision tasks with strong support for transfer learning and offers both classification and segmentation models. The package emphasizes compatibility between PyTorch and JAX ecosystems with automatic parameter conversion.
 
 ## Project Structure
 
 ```
 flaxvision/
-├── flaxvision/                      # Main package directory
-│   ├── __init__.py                 # Package entry point (exports models, utils)
-│   ├── models/                     # Neural network model implementations
-│   │   ├── __init__.py            # Model exports (all public model functions)
-│   │   ├── vgg.py                 # VGG architectures (VGG11-19, with/without BN)
-│   │   ├── resnet.py              # ResNet family (ResNet18-152, ResNeXt, Wide ResNet)
-│   │   ├── densenet.py            # DenseNet architectures (DenseNet121-201)
-│   │   ├── inception.py           # Inception v3 model
-│   │   └── segmentation/          # Segmentation models
-│   │       ├── __init__.py        # Segmentation model exports
-│   │       ├── segmentation.py    # Base segmentation utilities and model class
-│   │       ├── fcn.py             # Fully Convolutional Networks (FCN)
-│   │       └── deeplabv3.py       # DeepLabv3 segmentation models
-│   └── utils.py                   # PyTorch-to-Flax parameter conversion utilities
-├── tests/                          # Test suite
-│   ├── test_models.py             # Model output comparison tests (JAX vs PyTorch)
-│   ├── test_pretrained.py         # Pretrained model loading tests
-│   ├── test_training.py           # Training functionality tests
-│   └── run_tests.sh               # Test runner script
-├── examples/                       # Usage examples
-│   └── transfer_learning.ipynb    # Transfer learning with VGG16 on MNIST
-├── setup.py                       # Package configuration and dependencies
-├── .style.yapf                    # Code formatting configuration (yapf, 120 chars)
-├── .github/workflows/ci.yml       # GitHub Actions CI/CD
-├── README.md                      # Project overview and quickstart
-├── CONTRIBUTING.md                # Development and contribution guidelines
-├── CHANGELOG.md                   # Version history and release notes
-└── LICENSE                        # Project license
+   CHANGELOG.md                     # Version history and release notes
+   CONTRIBUTING.md                  # Contribution guidelines
+   LICENSE                         # Project license
+   README.md                       # Main project documentation
+   setup.py                        # Package setup and dependencies
+   examples/                       # Usage examples
+      transfer_learning.ipynb    # Transfer learning demo
+   flaxvision/                     # Main package directory
+      __init__.py                # Package initialization
+      utils.py                   # Parameter conversion utilities
+      models/                    # Model implementations
+          __init__.py           # Model exports
+          vgg.py                # VGG architecture variants
+          resnet.py             # ResNet family models
+          densenet.py           # DenseNet models
+          inception.py          # Inception v3 model
+          segmentation/         # Segmentation models
+              __init__.py       # Segmentation exports
+              segmentation.py   # Base segmentation framework
+              fcn.py            # Fully Convolutional Networks
+              deeplabv3.py      # DeepLabV3 implementation
+   tests/                          # Test suite
+      __init__.py               # Test package initialization
+      run_tests.sh              # Test runner script
+      test_models.py            # Model output validation tests
+      test_pretrained.py        # Pretrained model tests
+      test_training.py          # Training functionality tests
+   .github/                        # GitHub configuration
+      workflows/
+          ci.yml                # Continuous integration
+   .gitignore                      # Git ignore rules
+   .style.yapf                    # Code formatting configuration
 ```
 
 ## Build & Commands
@@ -67,6 +71,10 @@ flaxvision/
 - Import conventions: standard Python import ordering
 - File structure: modular organization with clear separation of concerns
 - Documentation: comprehensive docstrings and inline comments
+- Type annotations: extensive use of typing module (Any, Sequence, Optional, Tuple)
+- Naming: snake_case for functions/variables, PascalCase for classes
+- JAX/Flax patterns: @nn.compact decorator, setup() for complex modules
+- Error handling: explicit validation with descriptive error messages
 
 ## Testing
 
@@ -175,5 +183,45 @@ output, state = model.apply(params, inputs, mutable=['batch_stats'], train=True)
 - **Conversion pipeline**: PyTorch → Flax parameter mapping
 - **State management**: params (learnable) and batch_stats (running statistics)
 - **Initialization**: JAX-based random initialization for non-pretrained models
+
+## Model Implementation Patterns
+
+### Factory Function Pattern
+```python
+def model_name(rng, pretrained=True, **kwargs):
+    model = ModelClass(**kwargs)
+    if pretrained:
+        torch_params = utils.load_torch_params(model_urls[arch])
+        flax_params = utils.torch_to_linen(torch_params, _get_flax_keys)
+    else:
+        init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
+        flax_params = model.init(rng, init_batch)
+    return model, flax_params
+```
+
+### Backbone-Classifier Architecture
+```python
+class ModelName(nn.Module):
+    @staticmethod
+    def make_backbone(self):
+        return BackboneClass(...)
+    
+    def setup(self):
+        self.backbone = ModelName.make_backbone(self)
+        self.classifier = ClassifierClass(...)
+    
+    def __call__(self, inputs, train=False):
+        x = self.backbone(inputs, train)
+        return self.classifier(x)
+```
+
+### Training vs Inference
+```python
+# Training mode
+output, state = model.apply(params, inputs, mutable=['batch_stats'], train=True)
+
+# Inference mode
+output = model.apply(params, inputs, mutable=False, train=False)
+```
 
 All model implementations follow consistent patterns for easy maintenance and extension.

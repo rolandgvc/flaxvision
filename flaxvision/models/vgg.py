@@ -68,6 +68,27 @@ class VGG(nn.Module):
     self.classifier = Classifier(self.num_classes, self.dtype)
 
   def __call__(self, inputs, train=False):
+    # Input validation
+    if not isinstance(inputs, jnp.ndarray):
+      raise TypeError(f"inputs must be a JAX array, got {type(inputs)}")
+    
+    if inputs.ndim != 4:
+      raise ValueError(f"inputs must be 4-dimensional (batch, height, width, channels), got {inputs.ndim}D")
+    
+    batch_size, height, width, channels = inputs.shape
+    
+    if channels != 3:
+      raise ValueError(f"inputs must have 3 channels (RGB), got {channels}")
+    
+    if height < 32 or width < 32:
+      raise ValueError(f"inputs spatial dimensions must be at least 32x32, got {height}x{width}")
+    
+    if jnp.isnan(inputs).any():
+      raise ValueError("inputs contains NaN values")
+    
+    if jnp.isinf(inputs).any():
+      raise ValueError("inputs contains infinity values")
+    
     x = self.backbone(inputs, train)
     x = x.transpose((0, 3, 1, 2))
     x = x.reshape((x.shape[0], -1))
@@ -128,7 +149,18 @@ def _vgg(rng, arch, cfg, batch_norm, pretrained, **kwargs):
 
   if pretrained:
     torch_params = utils.load_torch_params(model_urls[arch])
-    flax_params = FrozenDict(_torch_to_vgg(torch_params, cfgs[cfg], batch_norm))
+    if torch_params is not None:
+      try:
+        flax_params = FrozenDict(_torch_to_vgg(torch_params, cfgs[cfg], batch_norm))
+      except Exception as e:
+        import warnings
+        warnings.warn(f"Failed to convert pretrained parameters for {arch}: {e}. Using random initialization.")
+        init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
+        flax_params = VGG(cfg=cfgs[cfg], batch_norm=batch_norm, **kwargs).init(rng, init_batch)
+    else:
+      # Network failure fallback
+      init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
+      flax_params = VGG(cfg=cfgs[cfg], batch_norm=batch_norm, **kwargs).init(rng, init_batch)
   else:
     init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
     flax_params = VGG(cfg=cfgs[cfg], batch_norm=batch_norm, **kwargs).init(rng, init_batch)

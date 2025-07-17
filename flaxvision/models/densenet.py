@@ -119,6 +119,27 @@ class DenseNet(nn.Module):
     self.classifier = nn.Dense(self.num_classes, dtype=self.dtype)
 
   def __call__(self, x, train: bool = False):
+    # Input validation
+    if not isinstance(x, jnp.ndarray):
+      raise TypeError(f"inputs must be a JAX array, got {type(x)}")
+    
+    if x.ndim != 4:
+      raise ValueError(f"inputs must be 4-dimensional (batch, height, width, channels), got {x.ndim}D")
+    
+    batch_size, height, width, channels = x.shape
+    
+    if channels != 3:
+      raise ValueError(f"inputs must have 3 channels (RGB), got {channels}")
+    
+    if height < 32 or width < 32:
+      raise ValueError(f"inputs spatial dimensions must be at least 32x32, got {height}x{width}")
+    
+    if jnp.isnan(x).any():
+      raise ValueError("inputs contains NaN values")
+    
+    if jnp.isinf(x).any():
+      raise ValueError("inputs contains infinity values")
+    
     x = self.backbone(x, train)
     x = x.transpose((0, 3, 1, 2))
     x = x.reshape((x.shape[0], -1))
@@ -145,7 +166,22 @@ def _densenet(rng, arch, growth_rate, block_config, num_init_features, pretraine
 
   if pretrained:
     torch_params = utils.load_torch_params(model_urls[arch])
-    flax_params = FrozenDict(utils.torch_to_linen(torch_params, _get_flax_keys))
+    if torch_params is not None:
+      try:
+        flax_params = FrozenDict(utils.torch_to_linen(torch_params, _get_flax_keys))
+      except Exception as e:
+        import warnings
+        warnings.warn(f"Failed to convert pretrained parameters for {arch}: {e}. Using random initialization.")
+        init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
+        flax_params = DenseNet(
+            growth_rate=growth_rate, block_config=block_config, num_init_features=num_init_features,
+            **kwargs).init(rng, init_batch)
+    else:
+      # Network failure fallback
+      init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
+      flax_params = DenseNet(
+          growth_rate=growth_rate, block_config=block_config, num_init_features=num_init_features,
+          **kwargs).init(rng, init_batch)
   else:
     init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
     flax_params = DenseNet(

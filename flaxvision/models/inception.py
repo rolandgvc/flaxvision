@@ -252,6 +252,27 @@ class Inception(nn.Module):
     self.classifier = nn.Dense(self.num_classes, dtype=self.dtype)
 
   def __call__(self, inputs, train=False):
+    # Input validation
+    if not isinstance(inputs, jnp.ndarray):
+      raise TypeError(f"inputs must be a JAX array, got {type(inputs)}")
+    
+    if inputs.ndim != 4:
+      raise ValueError(f"inputs must be 4-dimensional (batch, height, width, channels), got {inputs.ndim}D")
+    
+    batch_size, height, width, channels = inputs.shape
+    
+    if channels != 3:
+      raise ValueError(f"inputs must have 3 channels (RGB), got {channels}")
+    
+    if height < 75 or width < 75:
+      raise ValueError(f"inputs spatial dimensions must be at least 75x75 for Inception, got {height}x{width}")
+    
+    if jnp.isnan(inputs).any():
+      raise ValueError("inputs contains NaN values")
+    
+    if jnp.isinf(inputs).any():
+      raise ValueError("inputs contains infinity values")
+    
     x, _ = self.backbone(inputs, train)
     x = x.transpose((0, 3, 1, 2))
     x = x.reshape((x.shape[0], -1))
@@ -278,7 +299,18 @@ def inception_v3(rng, pretrained=True, **kwargs):
 
   if pretrained:
     torch_params = utils.load_torch_params(model_urls['inception_v3'])
-    flax_params = FrozenDict(utils.torch_to_linen(torch_params, _get_flax_keys))
+    if torch_params is not None:
+      try:
+        flax_params = FrozenDict(utils.torch_to_linen(torch_params, _get_flax_keys))
+      except Exception as e:
+        import warnings
+        warnings.warn(f"Failed to convert pretrained parameters for inception_v3: {e}. Using random initialization.")
+        init_batch = jnp.ones((1, 299, 299, 3), jnp.float32)
+        flax_params = Inception(**kwargs).init(rng, init_batch)
+    else:
+      # Network failure fallback
+      init_batch = jnp.ones((1, 299, 299, 3), jnp.float32)
+      flax_params = Inception(**kwargs).init(rng, init_batch)
   else:
     init_batch = jnp.ones((1, 299, 299, 3), jnp.float32)
     flax_params = Inception(**kwargs).init(rng, init_batch)

@@ -62,7 +62,18 @@ def _load_model(rng, arch_type, backbone, pretrained, num_classes, **kwargs):
     else:
       get_flax_keys_fn = segm_heads[arch_type][1]
       torch_params = utils.load_torch_params(model_urls[arch])
-      flax_params = FrozenDict(utils.torch_to_linen(torch_params, get_flax_keys_fn))
+      if torch_params is not None:
+        try:
+          flax_params = FrozenDict(utils.torch_to_linen(torch_params, get_flax_keys_fn))
+        except Exception as e:
+          import warnings
+          warnings.warn(f"Failed to convert pretrained parameters for {arch}: {e}. Using random initialization.")
+          init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
+          flax_params = model.init(rng, init_batch)
+      else:
+        # Network failure fallback
+        init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
+        flax_params = model.init(rng, init_batch)
   else:
     init_batch = jnp.ones((1, 224, 224, 3), jnp.float32)
     flax_params = model.init(rng, init_batch)

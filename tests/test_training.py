@@ -33,9 +33,9 @@ class TestTraining(unittest.TestCase):
       with self.assertRaises(Exception) as context:
         try:
           if key == 'inception_v3':
-            out = model.apply(params, inception_inputs, train=True, mutable=True, rngs={"params": rng, "dropout": rng})
+            out = model.apply(params, inception_inputs, train=True, mutable=True, rngs={"params": RNG, "dropout": RNG})
           else:
-            out = model.apply(params, inputs, train=True, mutable=True, rngs={"params": rng, "dropout": rng})
+            out = model.apply(params, inputs, train=True, mutable=True, rngs={"params": RNG, "dropout": RNG})
         except Exception as e:
             raise e
         self.assertTrue('Inference failed: ' in str(context.exception))

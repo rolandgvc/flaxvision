@@ -1,6 +1,6 @@
-# Flaxvision
+# FlaxVision Project
 
-Flaxvision is a neural network model library that ports popular computer vision models from PyTorch's torchvision to JAX & Flax. The project focuses on enabling transfer learning and high-performance inference using Google's JAX ecosystem while maintaining compatibility with PyTorch pretrained weights.
+FlaxVision is a neural network models library that ports computer vision models from PyTorch's torchvision to JAX & Flax. The project provides pre-trained models for image classification and segmentation tasks, with support for transfer learning and backbone extraction.
 
 ## Project Structure
 
@@ -40,12 +40,11 @@ flaxvision/
 ### Development Setup
 - Install in development mode: `pip install -e .`
 - Install with testing dependencies: `pip install -e .[testing]`
-- Standard installation: `pip install -e .[testing]`
+- Standard installation: `pip install flaxvision`
 
 ### Testing
-- Run all tests: `pytest`
-- Run tests with detailed logging: `python -m pytest -o log_cli=true --log-cli-level=INFO`
-- Run tests via script: `./tests/run_tests.sh`
+- Run all tests: `./tests/run_tests.sh` or `python -m pytest -o log_cli=true --log-cli-level=INFO`
+- Run tests with pytest: `pytest`
 - Run specific test file: `python -m unittest tests.test_models`
 
 ### Code Quality
@@ -62,14 +61,15 @@ flaxvision/
 
 ### Python Conventions
 - **Indentation**: 2 spaces consistently
-- **Imports**: Grouped by type (standard library, third-party, local), absolute imports preferred
+- **Imports**: Grouped by type (standard library, third-party, local), relative imports for internal modules
 - **Naming**: 
   - Classes: PascalCase (`BasicBlock`, `ResNet`, `DenseLayer`)
   - Functions: snake_case (`dilated_conv3x3`, `torch_to_flax`)
   - Variables: snake_case (`model_urls`, `num_classes`)
-  - Constants: UPPER_SNAKE_CASE (`MODELS_LIST`, `RNG`)
-- **Type Hints**: Extensive use of typing annotations
-- **Documentation**: Minimal docstrings, inline comments for complex operations
+  - Private functions: prefixed with underscore (`_resnet`, `_get_flax_keys`)
+- **Type Hints**: Extensive use of typing annotations with JAX/Flax types
+- **Documentation**: Minimal docstrings currently - room for improvement
+- **Line Length**: ~120 characters maximum
 
 ### Import Style
 ```python
